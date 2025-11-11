@@ -1,5 +1,5 @@
 # Mask Architecture Anomaly Segmentation for Road Scenes [[Course Project](https://drive.google.com/file/d/19gQ2uhI8jPxWIdGewkaA2DqihUnQLVfB/view?usp=drive_link)]
-This repository provides a starter-code setup for the Real-Time Anomaly Segmentation project of the Machine Learning Course. It consists of the code base for training/testing ERFNet on the Cityscapes dataset and perform anomaly segmentation.
+This repository provides a starter-code setup for the Real-Time Anomaly Segmentation project of the Machine Learning Course. It consists of the code base for training/testing ERFNet on the Cityscapes dataset and perform anomaly segmentation. It also contains some code referring to EoMT.
 
 ## Packages
 For instructions, please refer to the README in each folder:
