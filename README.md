@@ -1,3 +1,18 @@
+# How to
+Create a python environment from termina 
+```
+>>> py install 3.11
+
+>>> py -3.11 -m venv .venv
+```
+
+Next, install the requirements
+```
+>>> .venv/Scripts/Activate
+>>> pip install -r requirements.txt
+```
+
+
 # Mask Architecture for Road Scenes
 This is the starting repository for two projects:
 - Mask Architecture Anomaly Segmentation for Road Scenes  [[Project Description](https://drive.google.com/file/d/1Vz08DHsP_mojpCTAQTR6NHVq-2rEqAZM/view?usp=sharing)]
