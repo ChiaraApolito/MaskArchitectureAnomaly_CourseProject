@@ -12,6 +12,8 @@ Next, install the requirements
 >>> pip install -r requirements.txt
 ```
 
+Then, you have to [download the models](https://drive.google.com/drive/folders/1q2vHUzora2nP52fP50zmoQAykWuwoGav) `eomt_cityscapes.bin` and `eomt_coco.bin` and save them in the folder `trained_models`
+
 
 # Mask Architecture for Road Scenes
 This is the starting repository for two projects:
