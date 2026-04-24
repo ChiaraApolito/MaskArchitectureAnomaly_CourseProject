@@ -7,3 +7,5 @@ __pycache__/
 trained_models\eomt_cityscapes.bin
 trained_models\eomt_coco.bin
 data/
+*.code-
+articles/
