@@ -11,12 +11,15 @@ This repository is a course project with two main components:
 ## Rules
 1. Remember to always read and double check the file `project_guide.pdf`. This guide provide you the path to follow for successfully developing and solving the proposed exercises.
 2. Do not edit a file wihout ask it explicitly to the user.
+3. Do not rush, think twice before writing the code
+4. Write less than more. If you can write a code in 50 lines instead of 200 do it
+5. Be simple. Do not overcomplicate the code. Be smartand simple
 
 ## Environment Setup
 
 ```bash
 # Root project (ERFNet / eval scripts)
-py -3.11 -m venv .venv
+py -3.13 -m venv .venv
 .venv/Scripts/Activate
 pip install -r requirements.txt
 
