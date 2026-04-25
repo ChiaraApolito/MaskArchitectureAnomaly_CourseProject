@@ -6,8 +6,8 @@ Quantitative: add --gt_dir <path/to/gtFine/val> to compute per-class mIoU
 
 Usage
 -----
-python compare_models.py --n_samples 5
-python compare_models.py --n_samples 5 --gt_dir data/gtFine/val
+python -m eomtConfrontoOfficial.compare_models --n_samples 5
+python -m eomtConfrontoOfficial.compare_models --n_samples 5 --gt_dir data/gtFine/val
 """
 
 import sys, math, argparse
@@ -22,7 +22,7 @@ import matplotlib.patches as mpatches
 from torchvision.datasets import Cityscapes as CS
 from torchmetrics.classification import MulticlassJaccardIndex
 
-sys.path.insert(0, str(Path(__file__).parent / "eomt"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "eomt"))
 from models.eomt import EoMT
 from models.vit import ViT
 

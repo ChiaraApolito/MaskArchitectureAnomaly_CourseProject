@@ -16,7 +16,7 @@ Then, you have to [download the models](https://drive.google.com/drive/folders/1
 
 # Point 4 — Confronto EoMT-Cityscapes vs EoMT-COCO
 
-Script: [`compare_models.py`](compare_models.py)
+Script: [`compare_models.py`](eomtConfrontoOfficial/compare_models.py)
 
 ---
 
@@ -68,7 +68,7 @@ data/
 ### Solo qualitativo (nessuna GT richiesta)
 
 ```bash
-python compare_models.py --n_samples 5
+python -m eomtConfrontoOfficial.compare_models --n_samples 5
 ```
 
 Genera 5 immagini di confronto in `comparison_outputs/`.
@@ -76,7 +76,7 @@ Genera 5 immagini di confronto in `comparison_outputs/`.
 ### Qualitativo + quantitativo
 
 ```bash
-python compare_models.py --n_samples 5 --gt_dir data/gtFine/val
+python -m eomtConfrontoOfficial.compare_models --n_samples 5 --gt_dir data/gtFine/val
 ```
 
 ### Tutti i parametri disponibili
