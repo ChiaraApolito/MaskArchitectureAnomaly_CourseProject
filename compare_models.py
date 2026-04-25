@@ -249,13 +249,14 @@ def main():
         print("Run with: --gt_dir /path/to/gtFine/val")
         return
 
-    print(f"\n=== Quantitative: {len(img_paths)} images ===")
+    
+    print(f"\n=== Quantitative: {args.n_samples} images ===")
     gt_dir   = Path(args.gt_dir)
     metric_cs   = MulticlassJaccardIndex(19, ignore_index=255, average=None)
     metric_coco = MulticlassJaccardIndex(19, ignore_index=255, average=None)
     count = 0
 
-    for img_path in img_paths:
+    for img_path in img_paths[: args.n_samples]:
         stem = img_path.stem.replace("_leftImg8bit", "")
         city = stem.split("_")[0]
         gt_path = gt_dir / city / f"{stem}_gtFine_labelIds.png"
@@ -273,7 +274,7 @@ def main():
         metric_coco.update(p_coco[None], gt[None])
         count += 1
         if count % 50 == 0:
-            print(f"  processed {count}/{len(img_paths)}")
+            print(f"  processed {count}/{args.n_samples}")
 
     if count == 0:
         print("No GT files found. Check --gt_dir path.")
