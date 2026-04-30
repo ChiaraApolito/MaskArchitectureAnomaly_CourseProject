@@ -12,8 +12,10 @@ model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
   init_args:
     attn_mask_annealing_enabled: False
+    freeze_encoder: False
     ckpt_path: weights/eomt_coco.bin
     load_ckpt_class_head: False
+    freeze_encoder: True
     lr: 1e-4
     llrd: 0.8
     network:
