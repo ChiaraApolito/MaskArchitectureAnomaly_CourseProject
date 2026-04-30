@@ -894,6 +894,20 @@ class LightningModule(lightning.LightningModule):
                 for k, v in ckpt.items()
                 if "class_head" not in k and "class_predictor" not in k
             }
+        pos_key = "network.encoder.backbone.pos_embed"
+        if pos_key in ckpt and pos_key in self.state_dict():
+            ckpt_pos = ckpt[pos_key]
+            model_pos_shape = self.state_dict()[pos_key].shape
+            if ckpt_pos.shape != model_pos_shape:
+                N_ckpt, D = ckpt_pos.shape[1], ckpt_pos.shape[2]
+                N_model = model_pos_shape[1]
+                H_c = W_c = int(N_ckpt ** 0.5)
+                H_m = W_m = int(N_model ** 0.5)
+                pos_2d = ckpt_pos.reshape(1, H_c, W_c, D).permute(0, 3, 1, 2)
+                pos_2d = torch.nn.functional.interpolate(pos_2d, size=(H_m, W_m), mode="bicubic", align_corners=False)
+                ckpt[pos_key] = pos_2d.permute(0, 2, 3, 1).reshape(1, N_model, D)
+                logging.info(f"Interpolated pos_embed from {N_ckpt} to {N_model} tokens")
+
         logging.info(f"Loaded {len(ckpt)} keys")
         return ckpt
 
