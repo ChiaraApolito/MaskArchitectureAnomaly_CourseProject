@@ -59,6 +59,7 @@ class LightningModule(lightning.LightningModule):
         ckpt_path=None,
         delta_weights=False,
         load_ckpt_class_head=True,
+        freeze_encoder: bool = False,
     ):
         super().__init__()
 
@@ -96,6 +97,10 @@ class LightningModule(lightning.LightningModule):
             ckpt = self._load_ckpt(ckpt_path, load_ckpt_class_head)
             incompatible_keys = self.load_state_dict(ckpt, strict=False)
             self._raise_on_incompatible(incompatible_keys, load_ckpt_class_head)
+
+        if freeze_encoder:                                             
+            for param in self.network.encoder.parameters():
+                param.requires_grad_(False)
 
         self.log = torch.compiler.disable(self.log)  # type: ignore
 

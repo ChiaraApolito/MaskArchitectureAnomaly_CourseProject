@@ -1,0 +1,30 @@
+trainer:
+  max_epochs: 15
+  precision: 16-mixed
+  logger:
+    class_path: lightning.pytorch.loggers.wandb.WandbLogger
+    init_args:
+      resume: allow
+      project: "eomt"
+      name: "coco_to_cityscapes_finetune"
+
+model:
+  class_path: training.mask_classification_semantic.MaskClassificationSemantic
+  init_args:
+    attn_mask_annealing_enabled: False
+    ckpt_path: weights/eomt_coco.bin
+    load_ckpt_class_head: False
+    lr: 1e-4
+    llrd: 0.8
+    network:
+      class_path: models.eomt.EoMT
+      init_args:
+        num_q: 200
+        num_blocks: 3
+        encoder:
+          class_path: models.vit.ViT
+          init_args:
+            backbone_name: vit_base_patch14_reg4_dinov2
+
+data:
+  class_path: datasets.cityscapes_semantic.CityscapesSemantic
