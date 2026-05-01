@@ -60,6 +60,7 @@ class LightningModule(lightning.LightningModule):
         delta_weights=False,
         load_ckpt_class_head=True,
         freeze_encoder: bool = False,
+        freeze_encoder_except_last_n: int = 0,
     ):
         super().__init__()
 
@@ -98,7 +99,12 @@ class LightningModule(lightning.LightningModule):
             incompatible_keys = self.load_state_dict(ckpt, strict=False)
             self._raise_on_incompatible(incompatible_keys, load_ckpt_class_head)
 
-        if freeze_encoder:                                             
+        if freeze_encoder_except_last_n > 0:
+            blocks = list(self.network.encoder.backbone.blocks)
+            for block in blocks[:-freeze_encoder_except_last_n]:
+                for param in block.parameters():
+                    param.requires_grad_(False)
+        elif freeze_encoder:
             for param in self.network.encoder.parameters():
                 param.requires_grad_(False)
 
