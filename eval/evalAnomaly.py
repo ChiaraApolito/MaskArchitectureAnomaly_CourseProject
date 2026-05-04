@@ -58,6 +58,8 @@ def main():
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    parser.add_argument("--method", default="maxlogit", choices=["msp", "maxlogit", "entropy"], help="Post-hoc anomaly scoring method")
+
     args = parser.parse_args()
     anomaly_score_list = []
     ood_gts_list = []
@@ -93,14 +95,41 @@ def main():
     model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
     print ("Model and weights LOADED successfully")
     model.eval()
+
+    def compute_anomaly_score(logits, method):
+        """
+        logits: torch.Tensor [B, C, H, W]
+        returns: np.ndarray [H, W]
+        """
+
+        if method == "maxlogit":
+            # più basso è il massimo logit, più il pixel è anomalo
+            score = -torch.max(logits, dim=1)[0]
+
+        elif method == "msp":
+            # Maximum Softmax Probability
+            probs = torch.softmax(logits, dim=1)
+            score = 1.0 - torch.max(probs, dim=1)[0]
+
+        elif method == "entropy":
+            # Max Entropy
+            probs = torch.softmax(logits, dim=1)
+            score = -(probs * torch.log(probs + 1e-8)).sum(dim=1)
+
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        return score.squeeze(0).detach().cpu().numpy()
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().cuda()
-        images = images.permute(0,3,1,2)
+        # images = images.permute(0,3,1,2)   ?????
         with torch.no_grad():
             result = model(images)
-        anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)            
+        # anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)            
+        anomaly_result = compute_anomaly_score(result, args.method)
+
         pathGT = path.replace("images", "labels_masks")                
         if "RoadObsticle21" in pathGT:
            pathGT = pathGT.replace("webp", "png")
