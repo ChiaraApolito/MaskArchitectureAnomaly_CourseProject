@@ -9,9 +9,25 @@ import numpy as np
 from erfnet import ERFNet
 import os.path as osp
 from argparse import ArgumentParser
-from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
+# from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+
+def fpr_at_95_tpr(scores, labels):
+    """
+    Computes the false positive rate when true positive rate is at least 95%.
+
+    scores: anomaly scores, higher = more anomalous
+    labels: 0 for in-distribution pixels, 1 for OOD/anomaly pixels
+    """
+    fpr, tpr, _ = roc_curve(labels, scores)
+
+    if np.max(tpr) < 0.95:
+        return 1.0
+
+    idx = np.where(tpr >= 0.95)[0][0]
+    return fpr[idx]
+
 
 seed = 42
 
@@ -67,6 +83,9 @@ def main():
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
+    file.write(f"\nMethod: {args.method} | Input: {args.input[0]}\n")
+    print(f"Method: {args.method}")
+    print(f"Input: {args.input[0]}")
 
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
