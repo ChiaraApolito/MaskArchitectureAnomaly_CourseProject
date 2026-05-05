@@ -131,7 +131,7 @@ def main():
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().cuda()
-        images = images.permute(0,3,1,2)   # ?????
+        # images = images.permute(0,3,1,2)   ?????
         with torch.no_grad():
             result = model(images)
                    
