@@ -9,24 +9,9 @@ import numpy as np
 from erfnet import ERFNet
 import os.path as osp
 from argparse import ArgumentParser
-# from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
+from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-
-def fpr_at_95_tpr(scores, labels):
-    """
-    Computes the false positive rate when true positive rate is at least 95%.
-
-    scores: anomaly scores, higher = more anomalous
-    labels: 0 for in-distribution pixels, 1 for OOD/anomaly pixels
-    """
-    fpr, tpr, _ = roc_curve(labels, scores)
-
-    if np.max(tpr) < 0.95:
-        return 1.0
-
-    idx = np.where(tpr >= 0.95)[0][0]
-    return fpr[idx]
 
 
 seed = 42
@@ -123,6 +108,7 @@ def main():
 
         if method == "maxlogit":
             # più basso è il massimo logit, più il pixel è anomalo
+            # anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0) 
             score = -torch.max(logits, dim=1)[0]
 
         elif method == "msp":
@@ -140,13 +126,15 @@ def main():
 
         return score.squeeze(0).detach().cpu().numpy()
     
+    debug_lostfound_done = False
+
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().cuda()
-        # images = images.permute(0,3,1,2)   ?????
+        images = images.permute(0,3,1,2)   # ?????
         with torch.no_grad():
             result = model(images)
-        # anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)            
+                   
         anomaly_result = compute_anomaly_score(result, args.method)
 
         pathGT = path.replace("images", "labels_masks")                
@@ -161,6 +149,19 @@ def main():
         mask = target_transform(mask)
         ood_gts = np.array(mask)
 
+        is_lostfound = "Lost" in pathGT or "Found" in pathGT
+        if is_lostfound and not debug_lostfound_done:
+            print("\nDEBUG LOST/FOUND DATASET")
+            print("Image path:", path)
+            print("GT path:", pathGT)
+            print("Contains 'LostAndFound'?", "LostAndFound" in pathGT)
+            print("Contains 'LostFound'?", "LostFound" in pathGT)
+            print("Unique values BEFORE mapping:", np.unique(ood_gts)[:50])
+
+        if is_lostfound and not debug_lostfound_done:
+            print("Unique values AFTER mapping:", np.unique(ood_gts)[:50])
+            debug_lostfound_done = True
+
         if "RoadAnomaly" in pathGT:
             ood_gts = np.where((ood_gts==2), 1, ood_gts)
         if "LostAndFound" in pathGT:
@@ -172,6 +173,9 @@ def main():
             ood_gts = np.where((ood_gts==14), 255, ood_gts)
             ood_gts = np.where((ood_gts<20), 0, ood_gts)
             ood_gts = np.where((ood_gts==255), 1, ood_gts)
+
+        if "Lost" in pathGT or "Found" in pathGT:
+            print("Unique values AFTER mapping:", np.unique(ood_gts)[:50])
 
         if 1 not in np.unique(ood_gts):
             continue              
@@ -206,6 +210,7 @@ def main():
 
     file.write(('    AUPRC score:' + str(prc_auc*100.0) + '   FPR@TPR95:' + str(fpr*100.0) ))
     file.close()
+
 
 if __name__ == '__main__':
     main()
