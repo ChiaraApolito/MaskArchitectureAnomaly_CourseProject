@@ -68,8 +68,8 @@ def main():
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
-    file.write(f"\nMethod: {args.method} | Input: {args.input[0]}\n")
-    print(f"Method: {args.method}")
+    # file.write(f"\nMethod: {args.method} | Input: {args.input[0]}\n")
+    # print(f"Method: {args.method}")
     print(f"Input: {args.input[0]}")
 
     modelpath = args.loadDir + args.loadModel
@@ -125,8 +125,7 @@ def main():
             raise ValueError(f"Unknown method: {method}")
 
         return score.squeeze(0).detach().cpu().numpy()
-    
-    debug_lostfound_done = False
+
 
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
         print(path)
@@ -148,19 +147,6 @@ def main():
         mask = Image.open(pathGT)
         mask = target_transform(mask)
         ood_gts = np.array(mask)
-
-        is_lostfound = "Lost" in pathGT or "Found" in pathGT
-        if is_lostfound and not debug_lostfound_done:
-            print("\nDEBUG LOST/FOUND DATASET")
-            print("Image path:", path)
-            print("GT path:", pathGT)
-            print("Contains 'LostAndFound'?", "LostAndFound" in pathGT)
-            print("Contains 'LostFound'?", "LostFound" in pathGT)
-            print("Unique values BEFORE mapping:", np.unique(ood_gts)[:50])
-
-        if is_lostfound and not debug_lostfound_done:
-            print("Unique values AFTER mapping:", np.unique(ood_gts)[:50])
-            debug_lostfound_done = True
 
         if "RoadAnomaly" in pathGT:
             ood_gts = np.where((ood_gts==2), 1, ood_gts)
