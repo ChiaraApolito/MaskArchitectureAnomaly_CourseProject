@@ -61,6 +61,7 @@ class LightningModule(lightning.LightningModule):
         load_ckpt_class_head=True,
         freeze_encoder: bool = False,
         freeze_encoder_except_last_n: int = 0,
+        freeze_all_except_class_head: bool = False,
     ):
         super().__init__()
 
@@ -98,6 +99,42 @@ class LightningModule(lightning.LightningModule):
             ckpt = self._load_ckpt(ckpt_path, load_ckpt_class_head)
             incompatible_keys = self.load_state_dict(ckpt, strict=False)
             self._raise_on_incompatible(incompatible_keys, load_ckpt_class_head)
+
+        if freeze_all_except_class_head:
+            # 1. Freeze everything inside the EoMT network
+            for param in self.network.parameters():
+                param.requires_grad_(False)
+
+            # 2. Unfreeze only the classification head
+            for param in self.network.class_head.parameters():
+                param.requires_grad_(True)
+
+            # 3. Safety check
+            num_trainable = sum(p.numel() for p in self.network.parameters() if p.requires_grad)
+            num_total = sum(p.numel() for p in self.network.parameters())
+
+            logging.info(
+                f"Trainable network parameters: {num_trainable:,} / {num_total:,} "
+                f"({100 * num_trainable / num_total:.4f}%)"
+            )
+
+            if num_trainable == 0:
+                raise RuntimeError("No trainable parameters found in class_head.")
+
+        # if freeze_all_except_class_head:
+        #     for name, param in self.named_parameters():
+        #         param.requires_grad_(False)
+
+        #     trainable_keywords = ["class_head", "class_predictor"]
+
+        #     for name, param in self.named_parameters():
+        #         if any(keyword in name for keyword in trainable_keywords):
+        #             param.requires_grad_(True)
+
+        #     trainable = [name for name, p in self.named_parameters() if p.requires_grad]
+        #     logging.info("Trainable parameters after freeze_all_except_class_head:")
+        #     for name in trainable:
+        #         logging.info(f"  {name}")
 
         if freeze_encoder_except_last_n > 0:
             blocks = list(self.network.encoder.backbone.blocks)
