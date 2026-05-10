@@ -6,7 +6,7 @@ trainer:
     init_args:
       resume: allow
       project: "eomt"
-      name: "coco_to_cityscapes_finetune"
+      name: "coco_to_cityscapes_finetune_head_only"
 
 model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
@@ -14,8 +14,9 @@ model:
     attn_mask_annealing_enabled: False
     ckpt_path: weights/eomt_coco.bin
     load_ckpt_class_head: False
-    freeze_all_except_class_head = True
-    lr: 1e-4
+    freeze_all_except_class_head: True
+    head_only_no_grad: True
+    lr: 5e-4
     network:
       class_path: models.eomt.EoMT
       init_args:

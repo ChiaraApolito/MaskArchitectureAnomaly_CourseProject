@@ -39,6 +39,17 @@ from training.two_stage_warmup_poly_schedule import TwoStageWarmupPolySchedule
 bold_green = "\033[1;32m"
 reset = "\033[0m"
 
+class HeadOnlyGradWrapper(nn.Module):
+    def __init__(self, head: nn.Module):
+        super().__init__()
+        self.head = head
+
+    def forward(self, x):
+        # x viene staccato dal grafo del backbone/mask branch.
+        # La head però resta allenabile.
+        with torch.enable_grad():
+            return self.head(x.detach())
+        
 
 class LightningModule(lightning.LightningModule):
     def __init__(
@@ -62,6 +73,7 @@ class LightningModule(lightning.LightningModule):
         freeze_encoder: bool = False,
         freeze_encoder_except_last_n: int = 0,
         freeze_all_except_class_head: bool = False,
+        head_only_no_grad: bool = False,
     ):
         super().__init__()
 
@@ -78,6 +90,7 @@ class LightningModule(lightning.LightningModule):
         self.poly_power = poly_power
         self.warmup_steps = warmup_steps
         self.llrd_l2_enabled = llrd_l2_enabled
+        self.head_only_no_grad = head_only_no_grad
 
         self.strict_loading = False
 
@@ -101,15 +114,19 @@ class LightningModule(lightning.LightningModule):
             self._raise_on_incompatible(incompatible_keys, load_ckpt_class_head)
 
         if freeze_all_except_class_head:
-            # 1. Freeze everything inside the EoMT network
+            # Freeze everything in the EoMT network
             for param in self.network.parameters():
                 param.requires_grad_(False)
 
-            # 2. Unfreeze only the classification head
+            # Unfreeze only the classification head
             for param in self.network.class_head.parameters():
                 param.requires_grad_(True)
 
-            # 3. Safety check
+            # Optional: wrap class_head so it can still receive gradients
+            # even if the rest of the network forward is executed under torch.no_grad().
+            if self.head_only_no_grad:
+                self.network.class_head = HeadOnlyGradWrapper(self.network.class_head)
+
             num_trainable = sum(p.numel() for p in self.network.parameters() if p.requires_grad)
             num_total = sum(p.numel() for p in self.network.parameters())
 
@@ -118,25 +135,18 @@ class LightningModule(lightning.LightningModule):
                 f"({100 * num_trainable / num_total:.4f}%)"
             )
 
+            trainable = [
+                name for name, param in self.network.named_parameters()
+                if param.requires_grad
+            ]
+
+            logging.info("Trainable parameters:")
+            for name in trainable:
+                logging.info(f"  {name}")
+
             if num_trainable == 0:
-                raise RuntimeError("No trainable parameters found in class_head.")
-
-        # if freeze_all_except_class_head:
-        #     for name, param in self.named_parameters():
-        #         param.requires_grad_(False)
-
-        #     trainable_keywords = ["class_head", "class_predictor"]
-
-        #     for name, param in self.named_parameters():
-        #         if any(keyword in name for keyword in trainable_keywords):
-        #             param.requires_grad_(True)
-
-        #     trainable = [name for name, p in self.named_parameters() if p.requires_grad]
-        #     logging.info("Trainable parameters after freeze_all_except_class_head:")
-        #     for name in trainable:
-        #         logging.info(f"  {name}")
-
-        if freeze_encoder_except_last_n > 0:
+                raise RuntimeError("No trainable parameters found in class_head.")  
+        elif  freeze_encoder_except_last_n > 0:
             blocks = list(self.network.encoder.backbone.blocks)
             for block in blocks[:-freeze_encoder_except_last_n]:
                 for param in block.parameters():
@@ -146,6 +156,8 @@ class LightningModule(lightning.LightningModule):
                 param.requires_grad_(False)
 
         self.log = torch.compiler.disable(self.log)  # type: ignore
+
+
 
     def configure_optimizers(self):
         encoder_param_names = {
@@ -226,7 +238,11 @@ class LightningModule(lightning.LightningModule):
     def training_step(self, batch, batch_idx):
         imgs, targets = batch
 
-        mask_logits_per_block, class_logits_per_block = self(imgs)
+        if getattr(self, "head_only_no_grad", False) and self.training:
+            with torch.no_grad():
+                mask_logits_per_block, class_logits_per_block = self(imgs)
+        else:
+            mask_logits_per_block, class_logits_per_block = self(imgs)
 
         losses_all_blocks = {}
         for i, (mask_logits, class_logits) in enumerate(
