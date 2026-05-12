@@ -17,6 +17,8 @@ model:
     freeze_all_except_class_head: True
     class_only_loss: True
     head_only_no_grad: True
+    num_points: 512
+    masked_attn_enabled: False
     lr: 5e-4
     network:
       class_path: models.eomt.EoMT
