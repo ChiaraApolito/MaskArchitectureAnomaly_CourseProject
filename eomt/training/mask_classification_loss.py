@@ -30,6 +30,7 @@ class MaskClassificationLoss(Mask2FormerLoss):
         class_coefficient: float,
         num_labels: int,
         no_object_coefficient: float,
+        class_only_loss: bool = False,
     ):
         nn.Module.__init__(self)
         self.num_points = num_points
@@ -39,6 +40,8 @@ class MaskClassificationLoss(Mask2FormerLoss):
         self.dice_coefficient = dice_coefficient
         self.class_coefficient = class_coefficient
         self.num_labels = num_labels
+        self.class_only_loss = class_only_loss
+
         self.eos_coef = no_object_coefficient
         empty_weight = torch.ones(self.num_labels + 1)
         empty_weight[-1] = self.eos_coef
@@ -70,9 +73,12 @@ class MaskClassificationLoss(Mask2FormerLoss):
             class_labels=class_labels,
         )
 
-        loss_masks = self.loss_masks(masks_queries_logits, mask_labels, indices)
         loss_classes = self.loss_labels(class_queries_logits, class_labels, indices)
-
+        if self.class_only_loss:
+            return loss_classes
+        
+        loss_masks = self.loss_masks(masks_queries_logits, mask_labels, indices)
+        
         return {**loss_masks, **loss_classes}
 
     def loss_masks(self, masks_queries_logits, mask_labels, indices):

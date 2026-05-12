@@ -15,6 +15,7 @@ model:
     ckpt_path: weights/eomt_coco.bin
     load_ckpt_class_head: False
     freeze_all_except_class_head: True
+    class_only_loss: True
     head_only_no_grad: True
     lr: 5e-4
     network:

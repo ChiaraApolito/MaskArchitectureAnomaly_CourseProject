@@ -16,7 +16,6 @@ model:
     load_ckpt_class_head: False
     freeze_encoder: True
     lr: 1e-4
-    # llrd: 0.8
     network:
       class_path: models.eomt.EoMT
       init_args:

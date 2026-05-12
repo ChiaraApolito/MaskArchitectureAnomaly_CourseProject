@@ -45,6 +45,7 @@ class MaskClassificationSemantic(LightningModule):
         freeze_encoder_except_last_n: int = 0,
         freeze_all_except_class_head: bool = False,
         head_only_no_grad: bool = False,
+        class_only_loss: bool = False,
     ):
         super().__init__(
             network=network,
@@ -85,6 +86,7 @@ class MaskClassificationSemantic(LightningModule):
             class_coefficient=class_coefficient,
             num_labels=num_classes,
             no_object_coefficient=no_object_coefficient,
+            class_only_loss=class_only_loss,
         )
 
         self.init_metrics_semantic(ignore_idx, self.network.num_blocks + 1 if self.network.masked_attn_enabled else 1)
