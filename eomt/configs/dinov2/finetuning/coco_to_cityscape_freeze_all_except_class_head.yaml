@@ -6,25 +6,26 @@ trainer:
     init_args:
       resume: allow
       project: "eomt"
-      name: "coco_to_cityscapes_finetune_head_only"
+      name: "coco_to_cityscapes_finetune_head_only_fast"
 
 model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
   init_args:
-    attn_mask_annealing_enabled: False
+    attn_mask_annealing_enabled: false
     ckpt_path: weights/eomt_coco.bin
-    load_ckpt_class_head: False
-    freeze_all_except_class_head: True
-    class_only_loss: True
-    head_only_no_grad: True
+    load_ckpt_class_head: false
+    freeze_all_except_class_head: true
+    class_only_loss: true
+    head_only_no_grad: true
     num_points: 512
-    masked_attn_enabled: False
     lr: 5e-4
+
     network:
       class_path: models.eomt.EoMT
       init_args:
         num_q: 200
         num_blocks: 3
+        masked_attn_enabled: false
         encoder:
           class_path: models.vit.ViT
           init_args:
