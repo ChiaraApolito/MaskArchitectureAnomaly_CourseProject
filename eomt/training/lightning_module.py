@@ -74,6 +74,7 @@ class LightningModule(lightning.LightningModule):
         freeze_encoder_except_last_n: int = 0,
         freeze_all_except_class_head: bool = False,
         head_only_no_grad: bool = False,
+        use_cached_features: bool = False,
     ):
         super().__init__()
 
@@ -91,6 +92,7 @@ class LightningModule(lightning.LightningModule):
         self.warmup_steps = warmup_steps
         self.llrd_l2_enabled = llrd_l2_enabled
         self.head_only_no_grad = head_only_no_grad
+        self.use_cached_features = use_cached_features
 
         self.strict_loading = False
 
@@ -236,15 +238,29 @@ class LightningModule(lightning.LightningModule):
         return self.network(x)
 
     def training_step(self, batch, batch_idx):
-        imgs, targets = batch
+        # Caso A: training normale, batch = (imgs, targets)
+        if not getattr(self, "use_cached_features", False):
+            imgs, targets = batch
 
-        if getattr(self, "head_only_no_grad", False) and self.training:
-            with torch.no_grad():
+            if getattr(self, "head_only_no_grad", False) and self.training:
+                with torch.no_grad():
+                    mask_logits_per_block, class_logits_per_block = self(imgs)
+            else:
                 mask_logits_per_block, class_logits_per_block = self(imgs)
+
+        # Caso B: training con cache, batch = (q_features, mask_logits, targets)
         else:
-            mask_logits_per_block, class_logits_per_block = self(imgs)
+            q_features, mask_logits, targets = batch
+
+            # Qui sta la riga importante:
+            class_logits = self.network.class_head(q_features)
+
+            # Ricostruisco lo stesso formato atteso dal codice sotto:
+            mask_logits_per_block = [mask_logits]
+            class_logits_per_block = [class_logits]
 
         losses_all_blocks = {}
+
         for i, (mask_logits, class_logits) in enumerate(
             list(zip(mask_logits_per_block, class_logits_per_block))
         ):
@@ -253,6 +269,7 @@ class LightningModule(lightning.LightningModule):
                 class_queries_logits=class_logits,
                 targets=targets,
             )
+
             block_postfix = self.block_postfix(i)
             losses = {f"{key}{block_postfix}": value for key, value in losses.items()}
             losses_all_blocks |= losses

@@ -46,6 +46,7 @@ class MaskClassificationSemantic(LightningModule):
         freeze_all_except_class_head: bool = False,
         head_only_no_grad: bool = False,
         class_only_loss: bool = False,
+        use_cached_features: bool = False,
     ):
         super().__init__(
             network=network,
@@ -68,6 +69,7 @@ class MaskClassificationSemantic(LightningModule):
             freeze_encoder_except_last_n=freeze_encoder_except_last_n,
             freeze_all_except_class_head = freeze_all_except_class_head,
             head_only_no_grad=head_only_no_grad,
+            use_cached_features=use_cached_features,
         )
 
         self.save_hyperparameters(ignore=["_class_path"])
