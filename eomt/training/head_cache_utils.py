@@ -4,13 +4,6 @@ import torch
 from torch.utils.data import Dataset
 
 
-def move_target_to_cpu(target):
-    return {
-        k: v.cpu() if torch.is_tensor(v) else v
-        for k, v in target.items()
-    }
-
-
 def precompute_head_cache(
     model,
     train_dataloader,
@@ -20,12 +13,20 @@ def precompute_head_cache(
     overwrite=False,
 ):
     """
-    Precompute della cache per head-only fine-tuning.
+    Crea una cache LEGGERA per head-only fine-tuning.
 
     Salva per ogni immagine:
-        - q_features: input della class_head
-        - mask_logits: maschere frozen usate dal matcher/loss
-        - target: annotazioni
+        - q_features: input della class_head, shape [Q, C]
+        - query_class_targets: target di classe per query, shape [Q]
+
+    NON salva:
+        - mask_logits
+        - masks complete
+        - target completi
+
+    Nota:
+    il matching viene fatto una sola volta durante il precompute.
+    Durante il training si usa cross-entropy diretta sulla class_head.
     """
 
     cache_dir = Path(cache_dir)
@@ -38,7 +39,7 @@ def precompute_head_cache(
     existing_files = sorted(cache_dir.glob("sample_*.pt"))
     if existing_files and not overwrite:
         print(
-            f"[cache] Found {len(existing_files)} cached samples in {cache_dir}. "
+            f"[light-cache] Found {len(existing_files)} cached samples in {cache_dir}. "
             f"Skipping precompute. Set overwrite=True to recreate."
         )
         return len(existing_files)
@@ -61,6 +62,7 @@ def precompute_head_cache(
         p.requires_grad_(False)
 
     sample_idx = 0
+    no_object_class = model.num_classes
 
     try:
         with torch.no_grad():
@@ -71,17 +73,50 @@ def precompute_head_cache(
                 imgs, targets = batch
                 imgs = imgs.to(device, non_blocking=True).float()
 
-                # LightningModule.forward fa imgs / 255.0.
+                # LightningModule.forward normalmente fa imgs / 255.0.
                 # Qui chiamiamo direttamente model.network, quindi dividiamo qui.
                 x = imgs / 255.0
 
+                # forward frozen: serve solo durante il precompute
                 q_features, mask_logits = model.network.forward_frozen_features(x)
 
+                # class logits iniziali della head corrente
+                class_logits = model.network.class_head(q_features)
+
+                mask_labels = [
+                    target["masks"].to(device).to(mask_logits.dtype)
+                    for target in targets
+                ]
+                class_labels = [
+                    target["labels"].to(device).long()
+                    for target in targets
+                ]
+
+                # Matching fatto una sola volta
+                indices = model.criterion.matcher(
+                    masks_queries_logits=mask_logits,
+                    mask_labels=mask_labels,
+                    class_queries_logits=class_logits,
+                    class_labels=class_labels,
+                )
+
                 for b in range(q_features.shape[0]):
+                    src_idx, tgt_idx = indices[b]
+
+                    query_class_targets = torch.full(
+                        (q_features.shape[1],),
+                        fill_value=no_object_class,
+                        dtype=torch.long,
+                    )
+
+                    if len(src_idx) > 0:
+                        labels_b = targets[b]["labels"].long()
+                        matched_labels = labels_b[tgt_idx.cpu()]
+                        query_class_targets[src_idx.cpu()] = matched_labels
+
                     item = {
-                        "q_features": q_features[b].cpu(),
-                        "mask_logits": mask_logits[b].cpu(),
-                        "target": move_target_to_cpu(targets[b]),
+                        "q_features": q_features[b].detach().cpu().half(),
+                        "query_class_targets": query_class_targets.cpu(),
                     }
 
                     torch.save(item, cache_dir / f"sample_{sample_idx:06d}.pt")
@@ -89,25 +124,31 @@ def precompute_head_cache(
 
                 if batch_idx % 20 == 0:
                     print(
-                        f"[cache] batch {batch_idx} processed "
+                        f"[light-cache] batch {batch_idx} processed "
                         f"| saved samples: {sample_idx}"
                     )
 
     finally:
-        # Ripristina training/eval state
         model.train(old_training_state)
         model.network.train(old_network_training_state)
 
-        # Ripristina requires_grad, così la class_head resta allenabile dopo la cache
         for name, p in model.named_parameters():
             if name in old_requires_grad:
                 p.requires_grad_(old_requires_grad[name])
 
-    print(f"[cache] completed. Saved {sample_idx} samples in: {cache_dir}")
+    print(f"[light-cache] completed. Saved {sample_idx} samples in: {cache_dir}")
     return sample_idx
 
 
 class CachedHeadDataset(Dataset):
+    """
+    Dataset per la cache leggera.
+
+    Ogni item restituisce:
+        q_features: [Q, C]
+        query_class_targets: [Q]
+    """
+
     def __init__(self, cache_dir):
         self.cache_dir = Path(cache_dir)
         self.files = sorted(self.cache_dir.glob("sample_*.pt"))
@@ -122,17 +163,23 @@ class CachedHeadDataset(Dataset):
         item = torch.load(self.files[idx], map_location="cpu")
 
         q_features = item["q_features"]
-        mask_logits = item["mask_logits"]
-        target = item["target"]
+        query_class_targets = item["query_class_targets"]
 
-        return q_features, mask_logits, target
+        return q_features, query_class_targets
 
 
 def cached_head_collate_fn(batch):
-    q_features, mask_logits, targets = zip(*batch)
+    """
+    Collate function per cache leggera.
+
+    Output:
+        q_features: [B, Q, C]
+        query_class_targets: [B, Q]
+    """
+
+    q_features, query_class_targets = zip(*batch)
 
     q_features = torch.stack(q_features, dim=0)
-    mask_logits = torch.stack(mask_logits, dim=0)
-    targets = list(targets)
+    query_class_targets = torch.stack(query_class_targets, dim=0)
 
-    return q_features, mask_logits, targets
+    return q_features, query_class_targets

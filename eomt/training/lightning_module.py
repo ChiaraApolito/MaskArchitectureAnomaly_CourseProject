@@ -15,6 +15,7 @@ from lightning.fabric.utilities import rank_zero_info
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
+import torch.nn.functional as F
 from torchmetrics.classification import MulticlassJaccardIndex
 from torchmetrics.detection import PanopticQuality, MeanAveragePrecision
 from torchmetrics.functional.detection._panoptic_quality_common import (
@@ -238,26 +239,41 @@ class LightningModule(lightning.LightningModule):
         return self.network(x)
 
     def training_step(self, batch, batch_idx):
-        # Caso A: training normale, batch = (imgs, targets)
-        if not getattr(self, "use_cached_features", False):
-            imgs, targets = batch
+        # Caso B: training con cache LIGHT
+        # batch = (q_features, query_class_targets)
+        if getattr(self, "use_cached_features", False):
+            q_features, query_class_targets = batch
 
-            if getattr(self, "head_only_no_grad", False) and self.training:
-                with torch.no_grad():
-                    mask_logits_per_block, class_logits_per_block = self(imgs)
-            else:
-                mask_logits_per_block, class_logits_per_block = self(imgs)
-
-        # Caso B: training con cache, batch = (q_features, mask_logits, targets)
-        else:
-            q_features, mask_logits, targets = batch
-
-            # Qui sta la riga importante:
             class_logits = self.network.class_head(q_features)
 
-            # Ricostruisco lo stesso formato atteso dal codice sotto:
-            mask_logits_per_block = [mask_logits]
-            class_logits_per_block = [class_logits]
+            empty_weight = self.criterion.empty_weight.to(
+                device=class_logits.device,
+                dtype=class_logits.dtype,
+            )
+
+            loss = F.cross_entropy(
+                class_logits.transpose(1, 2),
+                query_class_targets.long(),
+                weight=empty_weight,
+            )
+
+            self.log(
+                "losses/train_loss_total",
+                loss,
+                prog_bar=True,
+                sync_dist=True,
+            )
+
+            return loss
+
+        # Caso A: training normale
+        imgs, targets = batch
+
+        if getattr(self, "head_only_no_grad", False) and self.training:
+            with torch.no_grad():
+                mask_logits_per_block, class_logits_per_block = self(imgs)
+        else:
+            mask_logits_per_block, class_logits_per_block = self(imgs)
 
         losses_all_blocks = {}
 
