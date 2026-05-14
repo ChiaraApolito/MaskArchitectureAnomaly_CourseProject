@@ -18,10 +18,8 @@ model:
     freeze_all_except_class_head: true
     use_cached_features: true
     class_only_loss: true
-    # head_only_no_grad: true
 
-    num_points: 512
-    lr: 5e-4
+    lr: 1e-4
 
     network:
       class_path: models.eomt_finetuning.EoMT     #l'ho cambiato!!!!!!!
