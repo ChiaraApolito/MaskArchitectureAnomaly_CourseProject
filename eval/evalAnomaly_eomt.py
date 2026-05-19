@@ -167,6 +167,35 @@ def load_eomt_weights(model, weights_path):
 
         new_ckpt[k] = v
 
+    pos_key = "encoder.backbone.pos_embed"
+
+    if pos_key in new_ckpt and pos_key in model.state_dict():
+        ckpt_pos = new_ckpt[pos_key]
+        model_pos = model.state_dict()[pos_key]
+
+        if ckpt_pos.shape != model_pos.shape:
+            print(
+                f"Interpolating pos_embed from {tuple(ckpt_pos.shape)} "
+                f"to {tuple(model_pos.shape)}"
+            )
+
+            _, n_ckpt, dim = ckpt_pos.shape
+            _, n_model, _ = model_pos.shape
+
+            h_ckpt = w_ckpt = int(n_ckpt ** 0.5)
+
+            h_model, w_model = model.encoder.backbone.patch_embed.grid_size
+
+            pos_2d = ckpt_pos.reshape(1, h_ckpt, w_ckpt, dim).permute(0, 3, 1, 2)
+
+            pos_2d = F.interpolate(
+                pos_2d,
+                size=(h_model, w_model),
+                mode="bicubic",
+                align_corners=False,
+            )
+
+            new_ckpt[pos_key] = pos_2d.permute(0, 2, 3, 1).reshape(1, h_model * w_model, dim)
     incompatible = model.load_state_dict(new_ckpt, strict=False)
 
     print("Checkpoint caricato:", weights_path)
@@ -407,7 +436,7 @@ def main():
         help="Temperature scaling. Usato per MSP/MaxLogit/Entropy. Ignorato per RbA.",
     )
 
-    parser.add_argument("--patch-size", type=int, default=14)
+    parser.add_argument("--patch-size", type=int, default=16)
     parser.add_argument("--backbone-name", default="vit_base_patch14_reg4_dinov2")
 
     parser.add_argument("--results-csv", default="results_task8_eomt.csv")
