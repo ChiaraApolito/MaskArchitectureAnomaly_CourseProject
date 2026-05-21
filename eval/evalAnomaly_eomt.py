@@ -80,7 +80,7 @@ def apply_preset(args):
     Fine-tuned su Cityscapes:
         stessa architettura del Cityscapes semantic
         num_classes = 19
-        num_q = 100
+        num_q = 200
 
     COCO panoptic:
         num_classes = 133
@@ -131,12 +131,14 @@ def build_eomt(args):
         ckpt_path="disable_timm_pretrained",
     )
 
+    masked_attn_enabled = False if args.preset == "finetuned" else True
+
     model = EoMT(
         encoder=encoder,
         num_classes=args.num_classes,
         num_q=args.num_q,
         num_blocks=args.num_blocks,
-        masked_attn_enabled=True,
+        masked_attn_enabled=masked_attn_enabled,
     )
 
     return model
