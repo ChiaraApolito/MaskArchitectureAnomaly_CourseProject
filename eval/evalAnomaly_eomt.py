@@ -27,13 +27,22 @@ from sklearn.metrics import average_precision_score
 # ---------------------------------------------------------------------
 # Permette di importare models.vit e models.eomt anche se il file è in eval/
 # ---------------------------------------------------------------------
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# REPO_ROOT = Path(__file__).resolve().parents[1]
+# if str(REPO_ROOT) not in sys.path:
+#     sys.path.insert(0, str(REPO_ROOT))
+
+# from models.vit import ViT
+# from models.eomt import EoMT
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+EOMT_ROOT = PROJECT_ROOT / "eomt"
+
+for p in [PROJECT_ROOT, EOMT_ROOT]:
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
 
 from models.vit import ViT
 from models.eomt import EoMT
-
 
 # ---------------------------------------------------------------------
 # Seed
@@ -126,14 +135,17 @@ def build_eomt(args):
         img_size=(IMG_HEIGHT, IMG_WIDTH),
         patch_size=args.patch_size,
         backbone_name=args.backbone_name,
-        # Passando un valore non-None evitiamo il download automatico da timm.
-        # I pesi arrivano dal checkpoint EoMT.
         ckpt_path="disable_timm_pretrained",
     )
 
-    masked_attn_enabled = False if args.preset == "finetuned" else True
+    if args.preset == "finetuned":
+        from models.eomt_finetuning import EoMT as EoMTClass
+        masked_attn_enabled = False
+    else:
+        from models.eomt import EoMT as EoMTClass
+        masked_attn_enabled = True
 
-    model = EoMT(
+    model = EoMTClass(
         encoder=encoder,
         num_classes=args.num_classes,
         num_q=args.num_q,
