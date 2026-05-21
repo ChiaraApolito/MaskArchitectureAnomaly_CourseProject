@@ -93,7 +93,7 @@ def apply_preset(args):
 
     elif args.preset == "finetuned":
         args.num_classes = 19
-        args.num_q = 100
+        args.num_q = 200
 
     elif args.preset == "coco":
         args.num_classes = 133
