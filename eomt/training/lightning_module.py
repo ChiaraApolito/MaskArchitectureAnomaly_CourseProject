@@ -152,10 +152,35 @@ class LightningModule(lightning.LightningModule):
             if num_trainable == 0:
                 raise RuntimeError("No trainable parameters found in class_head.")  
         elif  freeze_encoder_except_last_n > 0:
+            # 1. Congela TUTTO il network EoMT
+            for param in self.network.parameters():
+                param.requires_grad_(False)
+
+            # 2. Sblocca solo gli ultimi N blocchi dell'encoder/backbone
             blocks = list(self.network.encoder.backbone.blocks)
-            for block in blocks[:-freeze_encoder_except_last_n]:
+            for block in blocks[-freeze_encoder_except_last_n:]:
                 for param in block.parameters():
-                    param.requires_grad_(False)
+                    param.requires_grad_(True)
+
+            # 3. Sblocca solo la class_head
+            for param in self.network.class_head.parameters():
+                param.requires_grad_(True)
+
+            # 4. Log di controllo
+            num_trainable = sum(
+                p.numel() for p in self.network.parameters() if p.requires_grad
+            )
+            num_total = sum(p.numel() for p in self.network.parameters())
+
+            logging.info(
+                f"Trainable network parameters: {num_trainable:,} / {num_total:,} "
+                f"({100 * num_trainable / num_total:.4f}%)"
+            )
+
+            logging.info("Trainable parameters:")
+            for name, param in self.network.named_parameters():
+                if param.requires_grad:
+                    logging.info(f"  {name}")
         elif freeze_encoder:
             for param in self.network.encoder.parameters():
                 param.requires_grad_(False)

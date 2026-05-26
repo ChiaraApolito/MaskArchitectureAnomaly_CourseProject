@@ -20,6 +20,7 @@ model:
 
     # allena ultimi layer encoder
     freeze_encoder_except_last_n: 3
+    class_only_loss: true
 
     # learning rate più basso perché ora alleni anche backbone
     lr: 1e-5
