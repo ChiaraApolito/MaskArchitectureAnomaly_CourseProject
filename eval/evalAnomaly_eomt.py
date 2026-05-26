@@ -117,6 +117,7 @@ def apply_preset(args):
 # ---------------------------------------------------------------------
 # Costruzione modello EoMT
 # ---------------------------------------------------------------------
+
 def build_eomt(args):
     """
     Costruisce EoMT in modo coerente con i config:
@@ -138,14 +139,9 @@ def build_eomt(args):
         ckpt_path="disable_timm_pretrained",
     )
 
-    if args.preset == "finetuned":
-        from models.eomt_finetuning import EoMT as EoMTClass
-        masked_attn_enabled = False
-    else:
-        from models.eomt import EoMT as EoMTClass
-        masked_attn_enabled = True
+    masked_attn_enabled = False if args.preset == "finetuned" else True
 
-    model = EoMTClass(
+    model = EoMT(
         encoder=encoder,
         num_classes=args.num_classes,
         num_q=args.num_q,

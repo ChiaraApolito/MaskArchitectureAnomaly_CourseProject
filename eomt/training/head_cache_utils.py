@@ -140,6 +140,119 @@ def precompute_head_cache(
     return sample_idx
 
 
+# DA ELIMINARE SE IL CACHE- FINETUNING HEAD+ULTIMI LATERS NON FUNZIONA
+def precompute_backbone_token_cache(
+    model,
+    train_dataloader,
+    cache_dir,
+    device=None,
+    overwrite=False,
+):
+    cache_dir = Path(cache_dir)
+
+    if overwrite and cache_dir.exists():
+        shutil.rmtree(cache_dir)
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    existing_files = sorted(cache_dir.glob("batch_*.pt"))
+    if existing_files and not overwrite:
+        print(
+            f"[backbone-cache] Found {len(existing_files)} cached batches in {cache_dir}. "
+            f"Skipping precompute. Set overwrite=True to recreate."
+        )
+        return len(existing_files)
+
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    old_training_state = model.training
+    old_network_training_state = model.network.training
+    old_requires_grad = {
+        name: p.requires_grad
+        for name, p in model.named_parameters()
+    }
+
+    model = model.to(device)
+    model.eval()
+    model.network.eval()
+
+    for p in model.parameters():
+        p.requires_grad_(False)
+
+    stop_i = len(model.network.encoder.backbone.blocks) - model.network.num_blocks
+
+    sample_idx = 0
+
+    try:
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(train_dataloader):
+                imgs, targets = batch
+                imgs = imgs.to(device).float()
+                x = imgs / 255.0
+
+                x = (x - model.network.encoder.pixel_mean) / model.network.encoder.pixel_std
+                x = model.network.encoder.backbone.patch_embed(x)
+
+                if hasattr(model.network.encoder.backbone, "_pos_embed"):
+                    x = model.network.encoder.backbone._pos_embed(x)
+
+                for i, block in enumerate(model.network.encoder.backbone.blocks[:stop_i]):
+                    if hasattr(block, "attn"):
+                        attn = block.attn
+                    else:
+                        attn = block.attention
+
+                    attn_out = model.network._attn(
+                        attn,
+                        block.norm1(x),
+                        mask=None,
+                        rope=None,
+                    )
+
+                    if hasattr(block, "ls1"):
+                        x = x + block.ls1(attn_out)
+                    elif hasattr(block, "layer_scale1"):
+                        x = x + block.layer_scale1(attn_out)
+
+                    mlp_out = block.mlp(block.norm2(x))
+
+                    if hasattr(block, "ls2"):
+                        x = x + block.ls2(mlp_out)
+                    elif hasattr(block, "layer_scale2"):
+                        x = x + block.layer_scale2(mlp_out)
+
+                item = {
+                    "tokens": x.detach().cpu().half(),
+                    "targets": [
+                        {
+                            "labels": t["labels"].cpu(),
+                            "masks": t["masks"].cpu(),
+                        }
+                        for t in targets
+                    ],
+                }
+
+                torch.save(item, cache_dir / f"batch_{batch_idx:06d}.pt")
+                sample_idx += x.shape[0]
+
+                if batch_idx % 20 == 0:
+                    print(
+                        f"[backbone-cache] batch {batch_idx} processed "
+                        f"| saved samples: {sample_idx}"
+                    )
+
+    finally:
+        model.train(old_training_state)
+        model.network.train(old_network_training_state)
+
+        for name, p in model.named_parameters():
+            if name in old_requires_grad:
+                p.requires_grad_(old_requires_grad[name])
+
+    print(f"[backbone-cache] completed. Saved {sample_idx} samples in: {cache_dir}")
+    return sample_idx
+
 class CachedHeadDataset(Dataset):
     """
     Dataset per la cache leggera.
@@ -183,3 +296,34 @@ def cached_head_collate_fn(batch):
     query_class_targets = torch.stack(query_class_targets, dim=0)
 
     return q_features, query_class_targets
+
+
+# DA ELIMINARE SE IL CACHE- FINETUNING HEAD+ULTIMI LATERS NON FUNZIONA
+class CachedBackboneTokenDataset(Dataset):
+    def __init__(self, cache_dir):
+        self.cache_dir = Path(cache_dir)
+        self.files = sorted(self.cache_dir.glob("batch_*.pt"))
+
+        if len(self.files) == 0:
+            raise RuntimeError(f"No cached backbone-token files found in {self.cache_dir}")
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        item = torch.load(self.files[idx], map_location="cpu")
+        return item["tokens"], item["targets"]
+
+# DA ELIMINARE SE IL CACHE- FINETUNING HEAD+ULTIMI LATERS NON FUNZIONA
+def cached_backbone_token_collate_fn(batch):
+    tokens, targets = zip(*batch)
+
+    # Ogni file contiene già un batch: tokens ha shape [B, N, C].
+    tokens = torch.cat(tokens, dim=0)
+
+    # targets è una lista di liste: la appiattiamo.
+    flat_targets = []
+    for target_list in targets:
+        flat_targets.extend(target_list)
+
+    return tokens, flat_targets

@@ -1,0 +1,41 @@
+trainer:
+  max_epochs: 50
+  precision: 16-mixed
+  logger:
+    class_path: lightning.pytorch.loggers.wandb.WandbLogger
+    init_args:
+      resume: allow
+      project: "eomt"
+      name: "coco_to_cityscapes_finetune_last_layers_cached"
+
+model:
+  class_path: training.mask_classification_semantic.MaskClassificationSemantic
+  init_args:
+    attn_mask_annealing_enabled: false
+    ckpt_path: weights/eomt_coco.bin
+    load_ckpt_class_head: false
+
+    # NUOVO TRAINING DA CACHE INTERMEDIA
+    use_cached_backbone_tokens: true
+
+    # allena ultimi layer encoder
+    freeze_encoder_except_last_n: 3
+
+    # learning rate più basso perché ora alleni anche backbone
+    lr: 1e-5
+    llrd: 0.8
+    weight_decay: 0.05
+
+    network:
+      class_path: models.eomt_finetuning.EoMT
+      init_args:
+        num_q: 200
+        num_blocks: 3
+        masked_attn_enabled: false
+        encoder:
+          class_path: models.vit.ViT
+          init_args:
+            backbone_name: vit_base_patch14_reg4_dinov2
+
+data:
+  class_path: datasets.cityscapes_semantic.CityscapesSemantic

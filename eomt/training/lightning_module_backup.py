@@ -76,7 +76,6 @@ class LightningModule(lightning.LightningModule):
         freeze_all_except_class_head: bool = False,
         head_only_no_grad: bool = False,
         use_cached_features: bool = False,
-        use_cached_backbone_tokens: bool = False
     ):
         super().__init__()
 
@@ -95,7 +94,6 @@ class LightningModule(lightning.LightningModule):
         self.llrd_l2_enabled = llrd_l2_enabled
         self.head_only_no_grad = head_only_no_grad
         self.use_cached_features = use_cached_features
-        self.use_cached_backbone_tokens = use_cached_backbone_tokens
 
         self.strict_loading = False
 
@@ -266,32 +264,6 @@ class LightningModule(lightning.LightningModule):
             )
 
             return loss
-        
-        if getattr(self, "use_cached_backbone_tokens", False):
-            cached_tokens, targets = batch
-
-            cached_tokens = cached_tokens.float()
-
-            mask_logits_per_block, class_logits_per_block = (
-                self.network.forward_from_cached_tokens(cached_tokens)
-            )
-
-            losses_all_blocks = {}
-
-            for i, (mask_logits, class_logits) in enumerate(
-                zip(mask_logits_per_block, class_logits_per_block)
-            ):
-                losses = self.criterion(
-                    masks_queries_logits=mask_logits,
-                    class_queries_logits=class_logits,
-                    targets=targets,
-                )
-
-                block_postfix = self.block_postfix(i)
-                losses = {f"{key}{block_postfix}": value for key, value in losses.items()}
-                losses_all_blocks |= losses
-
-            return self.criterion.loss_total(losses_all_blocks, self.log)
 
         # Caso A: training normale
         imgs, targets = batch
