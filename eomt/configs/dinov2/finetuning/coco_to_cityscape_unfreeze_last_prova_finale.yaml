@@ -17,10 +17,15 @@ model:
 
     # NUOVO TRAINING DA CACHE INTERMEDIA
     use_cached_backbone_tokens: true
+    use_cached_features: false
+
+    freeze_all_except_class_head: false
+    freeze_encoder: false
 
     # allena ultimi layer encoder
-    freeze_encoder_except_last_n: 3
-    class_only_loss: true
+    freeze_encoder_except_last_n: 1
+
+    class_only_loss: false
 
     # learning rate più basso perché ora alleni anche backbone
     lr: 1e-5

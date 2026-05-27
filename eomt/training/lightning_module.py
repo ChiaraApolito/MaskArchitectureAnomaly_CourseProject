@@ -166,6 +166,10 @@ class LightningModule(lightning.LightningModule):
             for param in self.network.class_head.parameters():
                 param.requires_grad_(True)
 
+            # sblocca mask_head
+            for param in self.network.mask_head.parameters():
+                param.requires_grad_(True)
+
             # 4. Log di controllo
             num_trainable = sum(
                 p.numel() for p in self.network.parameters() if p.requires_grad

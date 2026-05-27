@@ -224,13 +224,13 @@ def precompute_backbone_token_cache(
 
                 item = {
                     "tokens": x.detach().cpu().half(),
-                    "targets": [
-                        {
-                            "labels": t["labels"].cpu(),
-                            "masks": t["masks"].cpu(),
-                        }
-                        for t in targets
-                    ],
+                    # "targets": [
+                    #     {
+                    #         "labels": t["labels"].cpu().long(),
+                    #         "masks": t["masks"].to(torch.bool).cpu(),
+                    #     }
+                    #     for t in targets
+                    # ],
                 }
 
                 torch.save(item, cache_dir / f"batch_{batch_idx:06d}.pt")
@@ -299,10 +299,28 @@ def cached_head_collate_fn(batch):
 
 
 # DA ELIMINARE SE IL CACHE- FINETUNING HEAD+ULTIMI LATERS NON FUNZIONA
-class CachedBackboneTokenDataset(Dataset):
-    def __init__(self, cache_dir):
+# class CachedBackboneTokenDataset(Dataset):
+#     def __init__(self, cache_dir):
+#         self.cache_dir = Path(cache_dir)
+#         self.files = sorted(self.cache_dir.glob("batch_*.pt"))
+
+#         if len(self.files) == 0:
+#             raise RuntimeError(f"No cached backbone-token files found in {self.cache_dir}")
+
+#     def __len__(self):
+#         return len(self.files)
+
+#     def __getitem__(self, idx):
+#         item = torch.load(self.files[idx], map_location="cpu")
+#         return item["tokens"], item["targets"]
+
+# NUOVA PERCHE' NON SALVO LE MASK NELLA CACHE
+class CachedBackboneTokenWithTargetsDataset(Dataset):
+    def __init__(self, cache_dir, original_dataset, original_batch_size):
         self.cache_dir = Path(cache_dir)
         self.files = sorted(self.cache_dir.glob("batch_*.pt"))
+        self.original_dataset = original_dataset
+        self.original_batch_size = original_batch_size
 
         if len(self.files) == 0:
             raise RuntimeError(f"No cached backbone-token files found in {self.cache_dir}")
@@ -312,18 +330,45 @@ class CachedBackboneTokenDataset(Dataset):
 
     def __getitem__(self, idx):
         item = torch.load(self.files[idx], map_location="cpu")
-        return item["tokens"], item["targets"]
+        tokens = item["tokens"]
+
+        start = idx * self.original_batch_size
+        end = min(start + tokens.shape[0], len(self.original_dataset))
+
+        targets = []
+        for original_idx in range(start, end):
+            _, target = self.original_dataset[original_idx]
+            targets.append(
+                {
+                    "labels": target["labels"].cpu().long(),
+                    "masks": target["masks"].to(torch.bool).cpu(),
+                }
+            )
+
+        return tokens, targets
 
 # DA ELIMINARE SE IL CACHE- FINETUNING HEAD+ULTIMI LATERS NON FUNZIONA
-def cached_backbone_token_collate_fn(batch):
+# def cached_backbone_token_collate_fn(batch):
+#     tokens, targets = zip(*batch)
+
+#     # Ogni file contiene già un batch: tokens ha shape [B, N, C].
+#     tokens = torch.cat(tokens, dim=0)
+
+#     # targets è una lista di liste: la appiattiamo.
+#     flat_targets = []
+#     for target_list in targets:
+#         flat_targets.extend(target_list)
+
+#     return tokens, flat_targets
+def cached_backbone_token_with_targets_collate_fn(batch):
     tokens, targets = zip(*batch)
 
-    # Ogni file contiene già un batch: tokens ha shape [B, N, C].
     tokens = torch.cat(tokens, dim=0)
 
-    # targets è una lista di liste: la appiattiamo.
     flat_targets = []
     for target_list in targets:
         flat_targets.extend(target_list)
 
     return tokens, flat_targets
+
+
