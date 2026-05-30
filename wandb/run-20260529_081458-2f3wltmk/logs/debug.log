@@ -1,0 +1,25 @@
+2026-05-29 08:14:58,184 INFO    MainThread:7248 [wandb_setup.py:_flush():68] Current SDK version is 0.19.10
+2026-05-29 08:14:58,185 INFO    MainThread:7248 [wandb_setup.py:_flush():68] Configure stats pid to 7248
+2026-05-29 08:14:58,185 INFO    MainThread:7248 [wandb_setup.py:_flush():68] Loading settings from /root/.config/wandb/settings
+2026-05-29 08:14:58,185 INFO    MainThread:7248 [wandb_setup.py:_flush():68] Loading settings from /content/drive/MyDrive/MaskArchitectureAnomaly_CourseProject/wandb/settings
+2026-05-29 08:14:58,186 INFO    MainThread:7248 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2026-05-29 08:14:58,186 INFO    MainThread:7248 [wandb_init.py:setup_run_log_directory():724] Logging user logs to ./wandb/run-20260529_081458-2f3wltmk/logs/debug.log
+2026-05-29 08:14:58,186 INFO    MainThread:7248 [wandb_init.py:setup_run_log_directory():725] Logging internal logs to ./wandb/run-20260529_081458-2f3wltmk/logs/debug-internal.log
+2026-05-29 08:14:58,187 INFO    MainThread:7248 [wandb_init.py:monkeypatch_ipython():643] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x7de8ece242f0>
+2026-05-29 08:14:58,187 INFO    MainThread:7248 [wandb_init.py:init():852] calling init triggers
+2026-05-29 08:14:58,188 INFO    MainThread:7248 [wandb_init.py:init():857] wandb.init called with sweep_config: {}
+config: {'_wandb': {}}
+2026-05-29 08:14:58,188 INFO    MainThread:7248 [wandb_init.py:init():893] starting backend
+2026-05-29 08:14:58,188 INFO    MainThread:7248 [wandb_init.py:init():897] sending inform_init request
+2026-05-29 08:14:58,199 INFO    MainThread:7248 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2026-05-29 08:14:58,199 INFO    MainThread:7248 [wandb_init.py:init():907] backend started and connected
+2026-05-29 08:14:58,208 INFO    MainThread:7248 [wandb_run.py:_label_probe_notebook():1369] probe notebook
+2026-05-29 08:14:59,697 INFO    MainThread:7248 [wandb_init.py:init():1002] updated telemetry
+2026-05-29 08:14:59,737 INFO    MainThread:7248 [wandb_init.py:init():1026] communicating run to backend with 90.0 second timeout
+2026-05-29 08:15:00,160 INFO    MainThread:7248 [wandb_init.py:init():1101] starting run threads in backend
+2026-05-29 08:15:00,691 INFO    MainThread:7248 [wandb_run.py:_console_start():2566] atexit reg
+2026-05-29 08:15:00,695 INFO    MainThread:7248 [wandb_run.py:_redirect():2414] redirect: wrap_raw
+2026-05-29 08:15:00,696 INFO    MainThread:7248 [wandb_run.py:_redirect():2483] Wrapping output streams.
+2026-05-29 08:15:00,696 INFO    MainThread:7248 [wandb_run.py:_redirect():2506] Redirects installed.
+2026-05-29 08:15:00,701 INFO    MainThread:7248 [wandb_init.py:init():1147] run started, returning control to user process
+2026-05-29 08:15:01,068 INFO    MainThread:7248 [wandb_run.py:_config_callback():1429] config_cb None None {'network': {'class_path': 'models.eomt_finetuning.EoMT', 'init_args': {'encoder': {'class_path': 'models.vit.ViT', 'init_args': {'patch_size': 16, 'backbone_name': 'vit_base_patch14_reg4_dinov2'}}, 'num_q': 200, 'num_blocks': 3, 'masked_attn_enabled': False}}, 'img_size': [1024, 1024], 'num_classes': 19, 'attn_mask_annealing_enabled': False, 'attn_mask_annealing_start_steps': None, 'attn_mask_annealing_end_steps': None, 'ignore_idx': 255, 'lr': 1e-05, 'llrd': 0.8, 'llrd_l2_enabled': True, 'lr_mult': 1.0, 'weight_decay': 0.05, 'num_points': 2048, 'oversample_ratio': 3.0, 'importance_sample_ratio': 0.75, 'poly_power': 0.9, 'warmup_steps': [500, 1000], 'no_object_coefficient': 0.1, 'mask_coefficient': 5.0, 'dice_coefficient': 5.0, 'class_coefficient': 2.0, 'mask_thresh': 0.8, 'overlap_thresh': 0.8, 'ckpt_path': '/content/drive/MyDrive/FAIML_project_and_presentation/01_Project/large_files/weights/eomt_coco.bin', 'delta_weights': False, 'load_ckpt_class_head': False, 'freeze_encoder': False, 'freeze_encoder_except_last_n': 1, 'freeze_all_except_class_head': False, 'head_only_no_grad': False, 'class_only_loss': False, 'use_cached_features': False, 'use_cached_backbone_tokens': True, '_instantiator': 'lightning.pytorch.cli.instantiate_module'}

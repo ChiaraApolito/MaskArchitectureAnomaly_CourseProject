@@ -1,0 +1,17 @@
+2026-05-27 15:47:59,990 INFO    MainThread:3272 [wandb_setup.py:_flush():68] Current SDK version is 0.19.10
+2026-05-27 15:47:59,992 INFO    MainThread:3272 [wandb_setup.py:_flush():68] Configure stats pid to 3272
+2026-05-27 15:47:59,992 INFO    MainThread:3272 [wandb_setup.py:_flush():68] Loading settings from /root/.config/wandb/settings
+2026-05-27 15:47:59,992 INFO    MainThread:3272 [wandb_setup.py:_flush():68] Loading settings from /content/drive/MyDrive/MaskArchitectureAnomaly_CourseProject/wandb/settings
+2026-05-27 15:47:59,992 INFO    MainThread:3272 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2026-05-27 15:47:59,993 INFO    MainThread:3272 [wandb_init.py:setup_run_log_directory():724] Logging user logs to ./wandb/run-20260527_154759-fd62qug6/logs/debug.log
+2026-05-27 15:47:59,993 INFO    MainThread:3272 [wandb_init.py:setup_run_log_directory():725] Logging internal logs to ./wandb/run-20260527_154759-fd62qug6/logs/debug-internal.log
+2026-05-27 15:47:59,993 INFO    MainThread:3272 [wandb_init.py:monkeypatch_ipython():643] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x7b415f2287a0>
+2026-05-27 15:47:59,994 INFO    MainThread:3272 [wandb_init.py:init():852] calling init triggers
+2026-05-27 15:47:59,994 INFO    MainThread:3272 [wandb_init.py:init():857] wandb.init called with sweep_config: {}
+config: {'_wandb': {}}
+2026-05-27 15:47:59,995 INFO    MainThread:3272 [wandb_init.py:init():893] starting backend
+2026-05-27 15:47:59,995 INFO    MainThread:3272 [wandb_init.py:init():897] sending inform_init request
+2026-05-27 15:48:00,015 INFO    MainThread:3272 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2026-05-27 15:48:00,016 INFO    MainThread:3272 [wandb_init.py:init():907] backend started and connected
+2026-05-27 15:48:00,043 INFO    MainThread:3272 [wandb_run.py:_label_probe_notebook():1369] probe notebook
+2026-05-27 15:48:00,352 INFO    MainThread:3272 [wandb_init.py:init():1002] updated telemetry

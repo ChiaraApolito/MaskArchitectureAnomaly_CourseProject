@@ -1,0 +1,32 @@
+INFO: LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+INFO:lightning.pytorch.accelerators.cuda:LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+INFO: Loading `train_dataloader` to estimate number of stepping batches.
+INFO:lightning.pytorch.utilities.rank_zero:Loading `train_dataloader` to estimate number of stepping batches.
+INFO:
+  | Name      | Type                   | Params | Mode
+-------------------------------------------------------------
+0 | network   | EoMT                   | 95.5 M | train
+1 | criterion | MaskClassificationLoss | 0      | train
+2 | metrics   | ModuleList             | 0      | train
+-------------------------------------------------------------
+8.9 M     Trainable params
+86.6 M    Non-trainable params
+95.5 M    Total params
+381.969   Total estimated model params size (MB)
+289       Modules in train mode
+0         Modules in eval mode
+INFO:lightning.pytorch.callbacks.model_summary:
+  | Name      | Type                   | Params | Mode
+-------------------------------------------------------------
+0 | network   | EoMT                   | 95.5 M | train
+1 | criterion | MaskClassificationLoss | 0      | train
+2 | metrics   | ModuleList             | 0      | train
+-------------------------------------------------------------
+8.9 M     Trainable params
+86.6 M    Non-trainable params
+95.5 M    Total params
+381.969   Total estimated model params size (MB)
+289       Modules in train mode
+0         Modules in eval mode
+INFO: [1;32mmIoU: 13.5[0m
+INFO:lightning.pytorch.utilities.rank_zero:[1;32mmIoU: 13.5[0m

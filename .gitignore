@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 data/*
 comparison_outputs/*
+.env
 
 # File pesanti - non committare
 eomt/weights/
