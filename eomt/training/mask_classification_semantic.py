@@ -124,7 +124,8 @@ class MaskClassificationSemantic(LightningModule):
                 )
 
     def on_validation_epoch_end(self):
-        self._on_eval_epoch_end_semantic("val")
+        # log_per_class=True -> logga metrics/val_iou_class_0..18 (ordine train-id Cityscapes)
+        self._on_eval_epoch_end_semantic("val", log_per_class=True)
 
     def on_validation_end(self):
         self._on_eval_end_semantic("val")
