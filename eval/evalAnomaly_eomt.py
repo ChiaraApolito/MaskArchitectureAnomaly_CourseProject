@@ -58,8 +58,8 @@ torch.manual_seed(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
 
-IMG_HEIGHT = 1024
-IMG_WIDTH = 2048
+IMG_HEIGHT = 512
+IMG_WIDTH = 1024
 input_transform = Compose(
     [
         Resize((IMG_HEIGHT, IMG_WIDTH), Image.BILINEAR),
