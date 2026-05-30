@@ -106,28 +106,44 @@ Il guadagno di velocità non vale niente se il modello che ne esce è rotto.
 
 ---
 
-## 2. La pipeline NUOVA: training "live" a due stadi
+## 2. La pipeline NUOVA: training "live" a tre stadi
 
 Abbiamo buttato la cache e siamo tornati al **forward normale**: a ogni step l'immagine
 passa per l'**augmentation live** (trasformazioni casuali fresche) e poi per **tutto** il
 modello. Immagine e maschere derivano così **sempre dalla stessa identica vista
 aumentata** → nessun disallineamento. È più lento per epoca, ma è **corretto**.
 
-Il training segue i due stadi suggeriti dalla guida. I config sono in
-[eomt/configs/dinov2/finetuning/](../eomt/configs/dinov2/finetuning/).
+Il training segue un **gradual unfreezing a tre stadi**, nello spirito della guida ("first
+fine-tune just the prediction head, then gradually unfreeze the last layers"). I config
+sono in [eomt/configs/dinov2/finetuning/](../eomt/configs/dinov2/finetuning/). A ogni stadio
+si sblocca un po' di più, partendo dai pesi dello stadio precedente.
 
-### Stage 1 — solo la testa, encoder congelato
+### Stage 0 — solo `class_head` + `mask_head` (tutto il resto congelato)
+File: `coco_to_cityscapes_stage0_heads.yaml`
+
+- `freeze_all_except_class_mask_heads: True` → si allenano **solo** `class_head` e
+  `mask_head` (~1.8M, ~2%). Encoder (DINO), `query` e `upscale` restano congelati ai
+  pesi COCO.
+- `load_ckpt_class_head: False` → la `class_head` **riparte da zero (random)**: COCO ha
+  un numero di classi diverso da Cityscapes (19), la vecchia testa non è riutilizzabile.
+- `lr: 1e-4` → la testa è nuova, può imparare in fretta.
+
+Obiettivo: passo più conservativo. Si adatta la **classificazione** alle 19 classi e si
+lascia che `mask_head` **ri-orienti le maschere** sulle feature COCO fisse, senza ancora
+toccare query/decoder. Output: punto di partenza dello Stage 1.
+
+### Stage 1 — tutta la testa, encoder congelato
 File: `coco_to_cityscapes_freeze_backbone.yaml`
 
-- `freeze_encoder: True` → l'encoder è **congelato**: i suoi pesi non si aggiornano. Si
-  allenano solo query + `mask_head` + `class_head` + scale-block (~7% dei parametri).
-- `load_ckpt_class_head: False` → la `class_head` **riparte da zero (random)**. Motivo:
-  COCO ha un numero di classi diverso da Cityscapes (19), quindi la vecchia testa di
-  classificazione non è riutilizzabile. La ricostruiamo da capo.
-- `lr: 1e-4` → learning rate "normale": la testa è nuova, può imparare in fretta.
+- Si parte **dai pesi dello Stage 0**, con `load_ckpt_class_head: True` (la testa è già
+  a 19 classi, va tenuta).
+- `freeze_encoder: True` → l'encoder è **congelato**, ma ora si allena **tutta** la testa:
+  `query` + `mask_head` + `class_head` + scale-block (~6.7M, ~7%). Rispetto allo Stage 0
+  si aggiungono `query` e `upscale`, così si adattano anche le query e il decoder conv.
+- `lr: 1e-4`.
 
-Obiettivo: stabilizzare la testa sulle 19 classi di Cityscapes **senza toccare** il
-decoder pre-addestrato su COCO, che è già buono.
+Obiettivo: adattare l'intera testa (anche il *dove* delle maschere) **senza toccare** il
+backbone DINOv2 pre-addestrato.
 
 ### Stage 2 — scongela gli ultimi strati
 File: `coco_to_cityscapes_unfreeze_last.yaml`
@@ -136,23 +152,35 @@ File: `coco_to_cityscapes_unfreeze_last.yaml`
   best checkpoint dello Stage 1 via `--model.ckpt_path`, con `load_class_head=True`
   (ora la testa è già a 19 classi, va tenuta).
 - `freeze_encoder_except_last_n: 2` → si **scongelano gli ultimi 2 blocchi** del
-  backbone (gli altri restano congelati). Si adattano le feature di alto livello a
-  Cityscapes senza riallenare tutto.
+  backbone (gli altri restano congelati) **più tutta la testa** (`query` + `mask_head` +
+  `class_head` + `upscale`). In questo modo la testa **si co-adatta** ai nuovi patch token
+  prodotti dai blocchi appena scongelati, invece di lavorare "fuori taratura". È il
+  *gradual unfreezing* canonico: in Stage 2 alleni tutto ciò che allenavi in Stage 1
+  **più** gli ultimi blocchi dell'encoder (~22% dei parametri).
 - `lr: 1e-5` (10× più basso) + `llrd: 0.8` → learning rate molto basso e **LLRD**
   (*Layer-wise Learning Rate Decay*): gli strati più profondi e generici dell'encoder
   ricevono un LR ancora più piccolo degli strati finali. Serve a **non distruggere** le
-  feature DINOv2 pre-addestrate, che sono preziose.
+  feature DINOv2 pre-addestrate, che sono preziose. La testa (non-backbone) usa il base LR
+  1e-5, quindi si rifinisce in modo gentile partendo dai pesi di Stage 1.
 - L'optimizer e lo scheduler ripartono **puliti** (no resume del trainer): così il
   *polynomial LR schedule* calcola correttamente i `total_steps` del solo Stage 2.
+
+> **Nota storica.** Inizialmente il ramo `freeze_encoder_except_last_n`
+> ([lightning_module.py](../eomt/training/lightning_module.py)) scongelava solo
+> `class_head` + `mask_head` + gli ultimi blocchi, **lasciando `query` e `upscale`
+> congelati ai valori di Stage 1**. Era un'asimmetria incoerente: cambiavi le feature
+> dell'encoder ma bloccavi due moduli (le query e il decoder conv) che proprio su quelle
+> feature devono operare. Ora il codice scongela l'intera testa, com'è corretto.
 
 ### Perché ora è corretto
 
 - **Allineamento**: immagine e maschere vengono dalla stessa augmentation → la
   mask/dice loss ottimizza il bersaglio giusto.
 - **Augmentation viva**: ogni epoca vede viste nuove → meno overfitting.
-- **Trasferimento graduale**: prima solo la testa (rischio basso), poi un ritocco fine
-  degli ultimi strati (rischio controllato da LR basso + LLRD). È la ricetta classica e
-  robusta di fine-tuning.
+- **Trasferimento graduale (3 stadi)**: prima solo `class_head`+`mask_head` (rischio
+  minimo), poi tutta la testa, infine un ritocco fine degli ultimi blocchi dell'encoder
+  (rischio controllato da LR basso + LLRD). Ogni stadio parte dai pesi del precedente. È
+  la ricetta classica e robusta di fine-tuning.
 
 ### Cosa compensa la perdita di velocità
 
@@ -175,7 +203,7 @@ intaccano la correttezza:
 Il codice della cache è ancora presente ma **non più usato**:
 [eomt/training/head_cache_utils.py](../eomt/training/head_cache_utils.py) e i percorsi
 `*_prova_finale.yaml` / `eomt_finetuning.py`. Sono lì solo per riferimento storico; la
-pipeline ufficiale del Task 5 è quella a due stadi descritta sopra. Il vecchio notebook è
+pipeline ufficiale del Task 5 è quella a tre stadi descritta sopra. Il vecchio notebook è
 stato rinominato `ignore_Task5_fineTuning.ipynb`; quello buono è
 `task5_emot_finetuning_on_cityscapes.ipynb`.
 

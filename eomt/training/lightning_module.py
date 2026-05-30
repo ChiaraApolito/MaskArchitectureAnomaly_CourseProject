@@ -74,6 +74,7 @@ class LightningModule(lightning.LightningModule):
         freeze_encoder: bool = False,
         freeze_encoder_except_last_n: int = 0,
         freeze_all_except_class_head: bool = False,
+        freeze_all_except_class_mask_heads: bool = False,
         head_only_no_grad: bool = False,
         use_cached_features: bool = False,
         use_cached_backbone_tokens: bool = False
@@ -151,6 +152,15 @@ class LightningModule(lightning.LightningModule):
 
             if num_trainable == 0:
                 raise RuntimeError("No trainable parameters found in class_head.")  
+        elif freeze_all_except_class_mask_heads:
+            # Stage 0: allena solo class_head + mask_head. Encoder (DINO), query e
+            # scale-block restano congelati: si adatta la classificazione e si lasciano
+            # muovere le maschere (le "chiavi" di mask_head) sulle feature COCO fisse.
+            for param in self.network.parameters():
+                param.requires_grad_(False)
+            for module in (self.network.class_head, self.network.mask_head):
+                for param in module.parameters():
+                    param.requires_grad_(True)
         elif  freeze_encoder_except_last_n > 0:
             # 1. Congela TUTTO il network EoMT
             for param in self.network.parameters():
@@ -162,13 +172,18 @@ class LightningModule(lightning.LightningModule):
                 for param in block.parameters():
                     param.requires_grad_(True)
 
-            # 3. Sblocca solo la class_head
-            for param in self.network.class_head.parameters():
-                param.requires_grad_(True)
-
-            # sblocca mask_head
-            for param in self.network.mask_head.parameters():
-                param.requires_grad_(True)
+            # 3. Sblocca tutta la testa (come in Stage 1) cosi' si co-adatta agli
+            #    ultimi blocchi dell'encoder appena scongelati: class_head, mask_head,
+            #    query e scale-block. Restano frozen solo i blocchi profondi del ViT.
+            head_modules = [
+                self.network.class_head,
+                self.network.mask_head,
+                self.network.q,
+                self.network.upscale,
+            ]
+            for module in head_modules:
+                for param in module.parameters():
+                    param.requires_grad_(True)
 
             # 4. Log di controllo
             num_trainable = sum(

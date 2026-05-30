@@ -6,7 +6,7 @@ trainer:
     init_args:
       resume: allow
       project: "eomt"
-      name: "coco_to_cityscapes_stage2_unfreeze_last"
+      name: "stage2_full_head_n_last2_dino"
 
 # STAGE 2 (guida Task 5): "then you can gradually unfreeze the last layers".
 # Si parte dai pesi dello Stage 1 (passare --model.ckpt_path <stage1 best.ckpt>
