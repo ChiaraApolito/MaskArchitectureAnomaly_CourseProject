@@ -5,6 +5,10 @@ __pycache__/
 data/*
 comparison_outputs/*
 .env
+CLAUDE.md
+*ignore*
+LOG.md
+*.code-workspace
 
 # File pesanti - non committare
 eomt/weights/
