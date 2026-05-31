@@ -14,6 +14,41 @@ Next, install the requirements
 
 Then, you have to [download the models](https://drive.google.com/drive/folders/1q2vHUzora2nP52fP50zmoQAykWuwoGav) `eomt_cityscapes.bin` and `eomt_coco.bin` and save them in the folder `trained_models`
 
+# Setup su Colab (notebook Task5 / Task8)
+
+I notebook Colab (`notebook/Task5_*`, `notebook/Task8_*`) condividono lo stesso
+setup — montare Drive, clonare/aggiornare la repo, installare le dipendenze —
+centralizzato in [`colab_setup.py`](colab_setup.py). **Usa sempre lo stesso server
+Colab**: il setup gira una volta per sessione, i notebook successivi trovano tutto
+pronto.
+
+**Prima volta (clonazione, una tantum).** La repo va clonata su Drive prima di
+poter usare `colab_setup`. In una cella Colab:
+
+```python
+from google.colab import drive; drive.mount("/content/drive")
+import os, subprocess
+REPO = "/content/drive/MyDrive/MaskArchitectureAnomaly_CourseProject"
+if not os.path.exists(REPO + "/.git"):
+    subprocess.run(["git", "clone", "--branch", "finetuning/coco-to-cityscapes",
+        "https://github.com/ChiaraApolito/MaskArchitectureAnomaly_CourseProject.git", REPO])
+```
+
+**Prima cella di ogni notebook** (Task5/Task8). Idempotente: monta, aggiorna la
+repo, installa le dipendenze solo se mancano in questa VM, e restituisce i path.
+
+```python
+from google.colab import drive; drive.mount("/content/drive")
+import sys; sys.path.insert(0, "/content/drive/MyDrive/MaskArchitectureAnomaly_CourseProject/notebook")
+from colab_setup import bootstrap
+P = bootstrap(task="task8")          # "task5" nell'altro notebook
+# poi usa P.weights, P.eomt, P.eval, P.anomaly_zip, ...
+```
+
+**WandB** (solo Task5): la API key NON va scritta nel codice. Usa i *Colab Secrets*
+(icona chiave nella sidebar, nome `WANDB_API_KEY`) e poi `colab_setup.wandb_login()`,
+oppure verrà chiesta in modo sicuro con `getpass`.
+
 # Point 4 — Confronto EoMT-Cityscapes vs EoMT-COCO
 
 Script: [`compare_models.py`](eomtConfrontoOfficial/compare_models.py)
