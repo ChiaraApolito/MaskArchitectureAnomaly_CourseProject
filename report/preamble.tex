@@ -27,6 +27,21 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 
+%%
+%% Bold-heading fix for XeTeX/Tectonic. cvpr.sty styles the title, the Abstract
+%% label and the section headings with the legacy \bf command, which under XeTeX
+%% falls back to a non-bold Latin Modern face. The subsection headings render
+%% correctly because they use a direct font selection (\font...=ptmb, Times Bold);
+%% we mirror that for the title, the Abstract label and the section headings.
+\makeatletter
+\font\cv@titlebf = ptmb scaled 1440  % ~\Large bold (title)
+\font\cv@headbf  = ptmb scaled 1200  % ~\large bold (sections, Abstract label)
+\def\cvprsection{\@startsection {section}{1}{\z@}%
+   {-10pt plus -2pt minus -2pt}{7pt} {\cv@headbf}}
+\patchcmd{\@maketitle}{\Large \bf \@title}{\cv@titlebf \@title}{}{\typeout{*** TITLE BOLD PATCH FAILED ***}}
+\patchcmd{\abstract}{\large\bf Abstract}{\cv@headbf Abstract}{}{\typeout{*** ABSTRACT BOLD PATCH FAILED ***}}
+\makeatother
+
 % \setlength{\abovecaptionskip}{.5em} % space above caption
 % \setlength{\belowcaptionskip}{1em} % space below caption
 

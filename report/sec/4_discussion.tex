@@ -27,8 +27,10 @@ Stage 2 keep the backbone stable. Notably, unfreezing the last two blocks
 adaptation is largely saturated at the head level under our budget.
 
 \paragraph{Why the mask architecture wins for anomalies.}
-The pixel-based ERFNet baseline scores an aggregate AuPRC of only $13.2$:
-a per-pixel softmax is systematically over-confident on unknown inputs, so
+The pixel-based ERFNet baseline is weak across the board: its best score,
+Max-Logit, tops out at $38.3$ AuPRC on RA-21 and collapses to single digits on
+the obstacle and Lost\,\&\,Found tracks (\cref{tab:anomaly}), because a
+per-pixel softmax is systematically over-confident on unknown inputs, so
 MSP/Max-Logit separate anomalies poorly. The mask architecture changes the
 geometry of the problem. With a set of object queries, an unknown region is
 naturally one that \emph{no} query claims---precisely the Rejected-by-All
@@ -62,9 +64,10 @@ tiny public subsets, so absolute numbers are higher-variance than leaderboard
 figures. (4) \emph{Implementation specifics}: the RbA score here uses a
 max-aggregation variant rather than the original summation, and temperature
 scaling was only exported at $T{=}1$, so the calibration study is incomplete.
-(5) \emph{Reporting gaps}: the Task 4 per-class table, the full ERFNet sweep
-and the per-stage mIoU were produced on the Colab runtime and are not yet in
-the repository; they are flagged in \cref{sec:results} for completion. Finally,
+(5) \emph{Reporting gaps}: the Task 4 per-class comparison, the remaining
+per-stage mIoU values (Stage 0, Stage 2 and the head-only baseline) and the MSP
+temperature sweep are still pending and flagged in \cref{sec:results} for
+completion. Finally,
 the abandoned backbone-token cache is a useful negative result: caching frozen
 tokens while re-sampling augmented masks misaligns supervision and collapses
 the mask/Dice loss, a reminder that augmentation consistency is essential when

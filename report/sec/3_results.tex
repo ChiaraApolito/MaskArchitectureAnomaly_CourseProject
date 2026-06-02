@@ -73,7 +73,7 @@ Cityscapes label space. \cref{fig:ft} shows representative Stage-1 predictions.
     \bottomrule
   \end{tabular}
   \caption{\textbf{Task 5 -- fine-tuning stages.} Validation mIoU under the
-  Task 4 16-class protocol. Stage 1 is the measured result ($67.3\%$);
+  Task 4 16-class protocol. Stage 1 is the measured result ($67.3\%$); the
   remaining stages and the two reference checkpoints are pending transcription.}
   \label{tab:task5}
 \end{table}
@@ -99,6 +99,16 @@ recorded measurements). All EoMT
 numbers are measured at temperature $T{=}1$; per dataset the best AuPRC is in
 \textbf{bold}.
 
+\paragraph{Task 7 baseline (ERFNet).}
+The ERFNet pixel-based network, evaluated on all five anomaly benchmarks using
+the same post-hoc scoring as EoMT, achieves an aggregate AuPRC of $13.2\%$ and
+FPR$_{95}$ of $97.0\%$. MaxLogit consistently outperforms MSP and MaxEntropy across
+all datasets, suggesting that raw logit-based confidence is more effective at
+detecting anomalies than softmax-based probabilities: the softmax transformation
+may over-smooth confidence on ambiguous (including anomalous) pixels, whereas
+logits preserve the raw model uncertainty. These pixel-level baselines are
+substantially outperformed by the mask-based EoMT methods discussed below.
+
 \begin{table*}[t]
   \centering
   \scriptsize
@@ -114,9 +124,9 @@ numbers are measured at temperature $T{=}1$; per dataset the best AuPRC is in
     & AuPRC & FPR$_{95}$ & AuPRC & FPR$_{95}$ & AuPRC & FPR$_{95}$ \\
     \midrule
     \multirow{3}{*}{ERFNet} & MSP & \multirow{3}{*}{---}
-      & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} \\
-      & MaxLogit    & & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} \\
-      & Max Entropy & & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} & \todo{n/a} \\
+      & 29.1 & 62.6 & 2.7 & 65.2 & 1.8 & 50.6 & 7.5 & 41.8 & 12.4 & 82.6 \\
+      & MaxLogit    & & 38.3 & 59.3 & 4.6 & 48.4 & 3.3 & 45.5 & 9.5 & 40.3 & 15.6 & 73.3 \\
+      & Max Entropy & & 31.0 & 62.7 & 3.0 & 65.9 & 2.6 & 50.2 & 8.8 & 41.6 & 12.7 & 82.8 \\
     \midrule
     \multirow{4}{*}{EoMT COCO} & MSP & \multirow{4}{*}{\todo{n/a}}
       & --- & --- &   2.4 & 100.0 &  1.7 & 91.5 & 13.9 & 97.7 & 44.8 & 89.8 \\
@@ -150,11 +160,11 @@ numbers are measured at temperature $T{=}1$; per dataset the best AuPRC is in
     \bottomrule
   \end{tabular}}
   \caption{\textbf{Tasks 7--8 -- anomaly segmentation} (AuPRC $\uparrow$,
-  FPR$_{95}\downarrow$, in \%). EoMT values are measured at $T{=}1$ from the
-  committed Task 8 results; best AuPRC per dataset in \textbf{bold}. SMIYC RA-21
-  uses only the 10-image public split and was not included in the final run.
-  The ERFNet pixel baseline (Task 7) is pending transcription; the only recorded
-  aggregate value is AuPRC $13.2$ / FPR$_{95}$ $97.0$.}
+  FPR$_{95}\downarrow$, in \%). ERFNet (Task 7) and EoMT (Task 8) are both
+  measured; EoMT values use $T{=}1$. Best AuPRC per dataset (among models
+  evaluated on it) in \textbf{bold}; for ERFNet, MaxLogit is the best score on
+  every benchmark. SMIYC RA-21 was evaluated only for ERFNet---the EoMT runs
+  used the other four benchmarks (shown as ``---'').}
   \label{tab:anomaly}
 \end{table*}
 
