@@ -1,0 +1,47 @@
+% Comprehensive Road Scene Understanding for Autonomous Driving
+% CVPR-style course-project report. Template: CVPR 2026 author kit.
+
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+%%%%%%%%% PAPER TYPE
+\usepackage[pagenumbers]{cvpr} % clean version with page numbers
+
+% Import additional packages in the preamble file, before hyperref
+\input{preamble}
+
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+
+%%%%%%%%% PAPER ID
+\def\paperID{0000}
+\def\confName{CVPR}
+\def\confYear{2026}
+
+%%%%%%%%% TITLE
+\title{Comprehensive Road Scene Understanding for Autonomous Driving:\\
+From Mask-Architecture Segmentation to Anomaly Detection}
+
+%%%%%%%%% AUTHORS
+\author{Davide Motta\\
+Politecnico di Torino\\
+Course Project -- Advanced Machine Learning\\
+{\tt\small davide.motta@studenti.polito.it}
+}
+
+\begin{document}
+\maketitle
+
+\input{sec/0_abstract}
+\input{sec/1_intro}
+\input{sec/2_methodology}
+\input{sec/3_results}
+\input{sec/4_discussion}
+\input{sec/5_conclusion}
+
+{
+    \small
+    \bibliographystyle{ieeenat_fullname}
+    \bibliography{main}
+}
+
+\end{document}

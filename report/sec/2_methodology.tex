@@ -1,0 +1,117 @@
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Mask classification and the EoMT model}
+All segmentation models in this work follow the mask-classification
+paradigm~\cite{maskformer}: the network predicts a fixed set of $N$ object
+queries, each producing (i) a class distribution over $C{+}1$ labels (the
+$C$ task classes plus a ``no-object'' class) and (ii) a binary mask over the
+image. EoMT~\cite{eomt} realises this with a \emph{plain} DINOv2~\cite{dinov2}
+Vision Transformer (we use \texttt{vit\_base\_patch14\_reg4\_dinov2}). A set
+of $N$ learnable query embeddings is concatenated to the patch tokens and
+processed jointly inside the last $L$ encoder blocks (here $L{=}3$), so the
+same self-attention layers refine both image features and queries; no
+separate pixel or Transformer decoder is used. A linear \emph{class head}
+maps each query to its class logits, while a three-layer MLP \emph{mask head}
+produces a query embedding that is multiplied with up-scaled patch features
+to yield the per-query mask. During training EoMT uses \emph{mask-attention
+annealing}: early on, query-to-patch attention is constrained to the
+currently predicted mask (as in Mask2Former~\cite{mask2former}), and a
+per-block probability schedule gradually relaxes this constraint so that, at
+convergence, the plain encoder attention is used at inference.
+
+\paragraph{Semantic inference.}
+For a pixel $(h,w)$ a class score is obtained by marginalising the queries,
+following MaskFormer:
+\begin{equation}
+  z_c(h,w) \;=\; \sum_{i=1}^{N} p_i(c)\, \sigma\big(m_i(h,w)\big),
+  \label{eq:seminf}
+\end{equation}
+where $p_i(c)$ is the (no-object-excluded) class probability of query $i$ and
+$\sigma(m_i)$ its sigmoid mask activation; the label is $\arg\max_c z_c$. This
+same rule turns the panoptic COCO model into a semantic predictor, which is
+essential for the comparison in \cref{sec:res-task4}.
+
+\subsection{Training objective and optimisation}
+Queries are matched to ground-truth segments by Hungarian bipartite
+matching, and the matched pairs are supervised by a weighted sum of a
+classification cross-entropy and a mask loss combining binary cross-entropy
+and Dice terms. We use the EoMT defaults: class, mask and Dice coefficients
+$2{:}5{:}5$ and a no-object weight of $0.1$. Optimisation uses AdamW with
+weight decay $0.05$ and \emph{layer-wise learning-rate decay} (LLRD, factor
+$0.8$), so deeper backbone blocks receive exponentially smaller learning
+rates---this protects the pre-trained DINOv2 features while still allowing the
+task-specific heads to move quickly. All training uses automatic mixed
+precision (AMP).
+
+\subsection{Task 4: a shared protocol for two label spaces}
+\label{sec:method-task4}
+We are given two EoMT checkpoints: one trained on Cityscapes (19 semantic
+classes) and one on COCO (133 panoptic classes). Comparing them fairly is
+non-trivial because the label spaces and tasks differ. We evaluate \emph{both}
+as semantic segmenters on the full Cityscapes validation set using one
+identical pipeline (\cref{eq:seminf}, argmax, per-class IoU). The Cityscapes
+model predicts the 19 train-ids directly. The COCO model's logits are
+projected into Cityscapes space through a fixed COCO$\rightarrow$Cityscapes
+mapping (e.g.\ COCO \texttt{road}/\texttt{pavement} $\rightarrow$ Cityscapes
+\texttt{road}/\texttt{sidewalk}, \texttt{tree}/\texttt{grass}
+$\rightarrow$ \texttt{vegetation}). When several COCO classes map to the same
+Cityscapes class we take the \emph{maximum} logit rather than the sum: this
+avoids unfairly inflating Cityscapes classes that happen to be covered by many
+COCO categories, giving a class high confidence whenever \emph{any} of its
+COCO counterparts is strongly predicted. Three Cityscapes classes without a
+reliable COCO correspondence---\texttt{pole}, \texttt{traffic sign} and
+\texttt{rider}---are excluded from both models, so the reported mIoU is
+computed over the remaining \textbf{16 classes}. COCO categories with no
+Cityscapes equivalent (e.g.\ \texttt{pizza}) are routed to the ignore label.
+The two networks use different native pre-processing (Cityscapes:
+$1024$-px sliding windows; COCO: $640$-px resize-and-pad), but the metric,
+mapping and exclusion list are shared.
+
+\subsection{Task 5: staged COCO\,$\rightarrow$\,Cityscapes fine-tuning}
+\label{sec:method-task5}
+The COCO model carries broad visual priors but has never seen the Cityscapes
+label space. Following the project guidance to ``first fine-tune the
+prediction head, then gradually unfreeze'', we adopt a three-stage schedule
+that monotonically increases the trainable capacity, all at $512{\times}512$
+resolution with $N{=}200$ queries:
+\begin{itemize}\setlength\itemsep{1pt}
+  \item \textbf{Stage~0} (10 epochs, lr $10^{-4}$): train only the
+  \texttt{class\_head} and \texttt{mask\_head}; DINOv2, queries and the
+  up-scaling blocks stay frozen. The class head is re-initialised because
+  Cityscapes has a different number of classes than COCO.
+  \item \textbf{Stage~1} (15 epochs, lr $10^{-4}$): keep DINOv2 frozen but
+  unfreeze the \emph{full} prediction head (queries, class head, mask head and
+  up-scaling), initialised from Stage~0.
+  \item \textbf{Stage~2} (20 epochs, lr $10^{-5}$, LLRD $0.8$): additionally
+  unfreeze the last two DINOv2 blocks, initialised from Stage~1 with a fresh
+  optimiser so the polynomial schedule restarts cleanly. The low learning rate
+  and LLRD prevent the backbone features from being destroyed.
+\end{itemize}
+The fine-tuned checkpoints are evaluated with exactly the Task~4 protocol
+(16-class mIoU) so the new model, the provided Cityscapes model and the COCO
+model are directly comparable. We deliberately avoid a backbone-token cache
+for the head-only stage: caching tokens from one augmented view while masks
+are reloaded from another misaligns supervision and collapses the mask/Dice
+loss.
+
+\subsection{Post-hoc anomaly scoring}
+\label{sec:method-anomaly}
+Anomaly segmentation is performed without retraining, by converting a
+segmentation network's outputs into a per-pixel anomaly score. From the
+semantic logits $z_c(h,w)$ (\cref{eq:seminf}) with temperature $T$ we use:
+\begin{align}
+  s_{\text{MSP}} &= 1-\max_c \mathrm{softmax}(z/T)_c, \\
+  s_{\text{MaxLogit}} &= -\max_c z_c/T, \\
+  s_{\text{Entropy}} &= -\textstyle\sum_c \mathrm{softmax}(z/T)_c \log \mathrm{softmax}(z/T)_c .
+\end{align}
+For the mask architecture we additionally use Rejected-by-All
+(RbA)~\cite{rba}: a pixel is anomalous when \emph{no} query both predicts a
+known class confidently and covers that pixel, implemented as
+$s_{\text{RbA}} = 1-\max_i\big[\sigma(m_i(h,w))\cdot\max_{c}p_i(c)\big]$.
+Temperature scaling, a simple calibration technique, is applied to the
+logit-based scores to test whether sharpening or smoothing the distribution
+improves separability. Anomaly quality is measured by the Area under the
+Precision--Recall curve (AuPRC, anomalies as positives) and the false-positive
+rate at $95\%$ true-positive rate (FPR$_{95}$); higher AuPRC and lower
+FPR$_{95}$ are better.

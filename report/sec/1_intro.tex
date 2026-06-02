@@ -1,0 +1,77 @@
+\section{Introduction}
+\label{sec:intro}
+
+\subsection{Project context}
+Scene understanding for autonomous driving is commonly cast as a dense
+labelling problem. \emph{Semantic segmentation} assigns a class label to
+every pixel; \emph{instance segmentation} additionally separates individual
+objects of the same class; and \emph{panoptic segmentation}~\cite{kirillov}
+unifies the two by labelling every pixel with both a class and, for
+countable ``thing'' classes, an instance identity. Deep networks have made
+these tasks remarkably accurate in structured, closed-world conditions where
+the set of categories is fixed in advance.
+
+Real driving, however, is an \emph{open world}. Networks trained on a closed
+label set are by construction unable to represent objects outside that
+set, yet such unknown, anomalous or out-of-distribution (OoD) objects---a
+lost cargo box, an animal, debris on the road---are exactly the cases where
+a perception failure is most dangerous~\cite{smiyc,fishyscapes}. Detecting
+and localising these regions is therefore a safety-critical complement to
+ordinary segmentation. This project follows a single thread through both
+problems: it studies the dominant \emph{mask-classification} family of
+segmentation models, compares two pre-trained variants of a state-of-the-art
+member of that family, adapts one of them to the driving domain by
+fine-tuning, and finally repurposes the same models for anomaly segmentation
+using training-free (post-hoc) scoring rules.
+
+\subsection{Literature foundations}
+\paragraph{From per-pixel to mask classification.}
+Efficient per-pixel networks such as ERFNet~\cite{erfnet} established that
+accurate real-time semantic segmentation is feasible on embedded automotive
+hardware by factorising convolutions for a favourable accuracy/latency
+trade-off. Such models treat segmentation as independent per-pixel
+classification. MaskFormer~\cite{maskformer} challenged this view: it shows
+that predicting a set of binary \emph{masks}, each paired with a single class
+label, is general enough to solve semantic, instance and panoptic
+segmentation with one model, loss and training procedure.
+Mask2Former~\cite{mask2former} refined this idea with \emph{masked
+attention}, restricting cross-attention to the region of each predicted mask,
+which improves both accuracy and convergence and made a single architecture
+competitive across all three tasks.
+
+\paragraph{Foundation backbones and EoMT.}
+In parallel, self-supervised pre-training produced strong general-purpose
+visual features: DINOv2~\cite{dinov2} learns robust representations from
+unlabelled images that transfer across many dense tasks. The Encoder-only
+Mask Transformer (EoMT)~\cite{eomt} brings these threads together: it argues
+that a sufficiently large, well pre-trained plain Vision Transformer does not
+need the task-specific adapters, pixel decoders and Transformer decoders of
+Mask2Former. Instead, learnable queries are processed \emph{inside} the ViT
+encoder itself, yielding a simpler architecture that matches specialised
+models while being substantially faster. EoMT is the central model of this
+project, instantiated with a DINOv2 ViT backbone.
+
+\paragraph{Anomaly segmentation and post-hoc scoring.}
+The anomaly-segmentation task and its evaluation are defined by the
+SegmentMeIfYouCan (SMIYC)~\cite{smiyc} and Fishyscapes~\cite{fishyscapes}
+benchmarks, together with the earlier RoadAnomaly dataset~\cite{roadanomaly};
+all judge whether a pixel belongs to the known Cityscapes~\cite{cityscapes}
+classes or is anomalous. A practical and popular strategy is to derive an
+anomaly score \emph{post-hoc} from an off-the-shelf segmentation network,
+with no retraining. Classic rules are Maximum Softmax Probability
+(MSP)~\cite{msp} and Max-Logit / energy-style scores from the scaling study
+of Hendrycks~\etal~\cite{maxlogit}. For mask-classification models a tailored
+rule, Rejected-by-All (RbA)~\cite{rba}, scores a pixel as anomalous when
+\emph{no} object query claims it with confidence---a natural fit for
+set-prediction architectures. Finally, when adapting large models under tight
+compute budgets, parameter-efficient methods such as LoRA~\cite{lora} are an
+attractive alternative to full fine-tuning.
+
+\paragraph{Contributions.}
+Within this context, the report (i) sets up a fair, shared semantic protocol
+to compare a Cityscapes-trained and a COCO-trained~\cite{coco} EoMT despite
+their different label spaces (\cref{sec:method,sec:results}); (ii) fine-tunes
+the COCO model on Cityscapes with a staged freezing schedule and analyses the
+resulting mIoU; and (iii) benchmarks pixel-based (ERFNet) and mask-based
+(EoMT) post-hoc anomaly detection with MSP, Max-Logit, Max-Entropy and RbA,
+including temperature scaling.

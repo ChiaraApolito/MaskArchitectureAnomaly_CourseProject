@@ -459,6 +459,153 @@ def evaluate_cityscapes_semantic(
     return per_class_iou, miou, pixel_acc
 
 
+# ---------------------------------------------------------------------------
+# Qualitative visualization helpers (Task 4 / Task 5)
+# ---------------------------------------------------------------------------
+
+# Official Cityscapes RGB colors for the 19 train ids, in train-id order.
+# Used as a *fixed* palette so the same class always gets the same color across
+# images and models, which makes the qualitative comparison and its legend
+# directly readable.
+CITYSCAPES_TRAINID_COLORS = [
+    (128, 64, 128),   # 0  road
+    (244, 35, 232),   # 1  sidewalk
+    (70, 70, 70),     # 2  building
+    (102, 102, 156),  # 3  wall
+    (190, 153, 153),  # 4  fence
+    (153, 153, 153),  # 5  pole
+    (250, 170, 30),   # 6  traffic light
+    (220, 220, 0),    # 7  traffic sign
+    (107, 142, 35),   # 8  vegetation
+    (152, 251, 152),  # 9  terrain
+    (70, 130, 180),   # 10 sky
+    (220, 20, 60),    # 11 person
+    (255, 0, 0),      # 12 rider
+    (0, 0, 142),      # 13 car
+    (0, 0, 70),       # 14 truck
+    (0, 60, 100),     # 15 bus
+    (0, 80, 100),     # 16 train
+    (0, 0, 230),      # 17 motorcycle
+    (119, 11, 32),    # 18 bicycle
+]
+
+
+def cityscapes_palette():
+    """Return the fixed 19x3 uint8 Cityscapes palette (train-id order)."""
+    import numpy as np
+
+    return np.array(CITYSCAPES_TRAINID_COLORS, dtype=np.uint8)
+
+
+def colorize_cityscapes(label, palette=None, ignore_index: int = IGNORE_INDEX):
+    """Colorize a HxW array of Cityscapes train ids into an RGB uint8 image.
+
+    Pixels equal to ``ignore_index`` (or to any id outside ``[0, 18]``) are
+    rendered black.
+    """
+    import numpy as np
+
+    if palette is None:
+        palette = cityscapes_palette()
+
+    label = np.asarray(label)
+    rgb = np.zeros((*label.shape, 3), dtype=np.uint8)
+    for train_id in range(NUM_CITYSCAPES_CLASSES):
+        rgb[label == train_id] = palette[train_id]
+    return rgb
+
+
+def save_qualitative_comparison(
+    image,
+    ground_truth,
+    predictions,
+    save_path,
+    palette=None,
+    ignore_index: int = IGNORE_INDEX,
+    title: str | None = None,
+):
+    """Save one qualitative comparison figure with a shared Cityscapes legend.
+
+    Parameters
+    ----------
+    image:
+        Input image as a CxHxW tensor or HxWx3 array, values in [0, 1] or [0, 255].
+    ground_truth:
+        HxW array of Cityscapes train ids (255 = ignore).
+    predictions:
+        Ordered mapping ``{column_title: HxW train-id array}``, e.g.
+        ``{"COCO": coco_pred, "Cityscapes": cityscapes_pred}``. All predictions
+        must already be in the 19-class Cityscapes space.
+    save_path:
+        Destination PNG path. Parent directories are created if needed.
+    palette:
+        Optional fixed palette; defaults to :func:`cityscapes_palette`.
+    title:
+        Optional figure suptitle (e.g. the image file name or index).
+    """
+    from pathlib import Path
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    if palette is None:
+        palette = cityscapes_palette()
+
+    # Normalize the input image to a HxWx3 array in [0, 1] for imshow.
+    if hasattr(image, "detach"):
+        image = image.detach().cpu().numpy()
+    image = np.asarray(image)
+    if image.ndim == 3 and image.shape[0] in (1, 3):  # CxHxW -> HxWxC
+        image = np.transpose(image, (1, 2, 0))
+    if image.dtype != np.float32 and image.max() > 1.0:
+        image = image.astype(np.float32) / 255.0
+    image = np.clip(image, 0.0, 1.0)
+
+    gt = np.asarray(ground_truth)
+    panels = [("Input", None), ("Ground truth", gt)]
+    panels.extend((name, np.asarray(pred)) for name, pred in predictions.items())
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 5))
+    if len(panels) == 1:
+        axes = [axes]
+
+    for ax, (name, data) in zip(axes, panels):
+        if data is None:
+            ax.imshow(image)
+        else:
+            ax.imshow(colorize_cityscapes(data, palette, ignore_index))
+        ax.set_title(name)
+        ax.axis("off")
+
+    # Shared legend: only the classes that actually appear in GT or predictions.
+    present = set()
+    for data in [gt, *predictions.values()]:
+        present.update(int(v) for v in np.unique(data) if 0 <= int(v) < NUM_CITYSCAPES_CLASSES)
+    handles = [
+        mpatches.Patch(color=np.array(palette[c]) / 255.0, label=CS_NAMES[c])
+        for c in sorted(present)
+    ]
+    if handles:
+        fig.legend(
+            handles=handles,
+            loc="lower center",
+            ncol=min(len(handles), 7),
+            frameon=False,
+            bbox_to_anchor=(0.5, -0.02),
+        )
+
+    if title:
+        fig.suptitle(title)
+
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(save_path, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    return save_path
+
+
 def make_iou_tables(
     results: Mapping[str, Mapping[str, Any]],
     excluded_classes: Sequence[int] | None = None,
