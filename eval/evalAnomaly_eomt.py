@@ -228,23 +228,40 @@ def load_eomt_weights(model, weights_path):
     return model
 
 
-# ---------------------------------------------------------------------
-# Conversione output EoMT -> pixel logits
-# ---------------------------------------------------------------------
-def eomt_to_pixel_logits(mask_logits, class_logits, target_size):
-    """
-    Stessa logica di training/lightning_module.py:
+# # ---------------------------------------------------------------------
+# # Conversione output EoMT -> pixel logits
+# # ---------------------------------------------------------------------
+# def eomt_to_pixel_logits(mask_logits, class_logits, target_size):
+#     """
+#     Stessa logica di training/lightning_module.py:
 
-    torch.einsum(
-        "bqhw, bqc -> bchw",
-        mask_logits.sigmoid(),
-        class_logits.softmax(dim=-1)[..., :-1],
-    )
+#     torch.einsum(
+#         "bqhw, bqc -> bchw",
+#         mask_logits.sigmoid(),
+#         class_logits.softmax(dim=-1)[..., :-1],
+#     )
 
-    Output:
-        pixel_logits: [B, C, H, W]
-    """
+#     Output:
+#         pixel_logits: [B, C, H, W]
+#     """
 
+#     if mask_logits.shape[-2:] != target_size:
+#         mask_logits = F.interpolate(
+#             mask_logits,
+#             size=target_size,
+#             mode="bilinear",
+#             align_corners=False,
+#         )
+
+#     pixel_logits = torch.einsum(
+#         "bqhw,bqc->bchw",
+#         mask_logits.sigmoid(),
+#         class_logits.softmax(dim=-1)[..., :-1],
+#     )
+
+#     return pixel_logits
+
+def eomt_to_pixel_scores(mask_logits, class_logits, target_size, temperature=1.0):
     if mask_logits.shape[-2:] != target_size:
         mask_logits = F.interpolate(
             mask_logits,
@@ -253,39 +270,69 @@ def eomt_to_pixel_logits(mask_logits, class_logits, target_size):
             align_corners=False,
         )
 
-    pixel_logits = torch.einsum(
+    mask_probs = mask_logits.sigmoid()
+
+    class_probs = torch.softmax(
+        class_logits / temperature,
+        dim=-1
+    )[..., :-1]
+
+    semantic_scores = torch.einsum(
         "bqhw,bqc->bchw",
-        mask_logits.sigmoid(),
-        class_logits.softmax(dim=-1)[..., :-1],
+        mask_probs,
+        class_probs,
     )
 
-    return pixel_logits
+    semantic_probs = semantic_scores / (
+        semantic_scores.sum(dim=1, keepdim=True) + 1e-8
+    )
+
+    return semantic_scores, semantic_probs
 
 
 # ---------------------------------------------------------------------
 # Score anomaly MSP / MaxLogit / Entropy
 # ---------------------------------------------------------------------
-def compute_anomaly_score(pixel_logits, method, temperature=1.0):
-    """
-    logits: torch.Tensor [B, C, H, W]
-    returns: np.ndarray [H, W]
-    """
+# def compute_anomaly_score(pixel_logits, method, temperature=1.0):
+#     """
+#     logits: torch.Tensor [B, C, H, W]
+#     returns: np.ndarray [H, W]
+#     """
 
-    logits = pixel_logits / temperature
+#     logits = pixel_logits / temperature
 
+#     if method == "maxlogit":
+#         score = -torch.max(logits, dim=1)[0]
+
+#     elif method == "msp":
+#         probs = torch.softmax(logits, dim=1)
+#         score = 1.0 - torch.max(probs, dim=1)[0]
+
+#     elif method == "entropy":
+#         probs = torch.softmax(logits, dim=1)
+#         score = -(probs * torch.log(probs + 1e-8)).sum(dim=1)
+
+#     else:
+#         raise ValueError(f"Metodo non riconosciuto: {method}")
+
+#     return score
+
+def compute_eomt_anomaly_score(
+    semantic_scores,
+    semantic_probs,
+    method,
+):
     if method == "maxlogit":
-        score = -torch.max(logits, dim=1)[0]
+        score = -torch.max(semantic_scores, dim=1)[0]
 
     elif method == "msp":
-        probs = torch.softmax(logits, dim=1)
-        score = 1.0 - torch.max(probs, dim=1)[0]
+        score = 1.0 - torch.max(semantic_probs, dim=1)[0]
 
     elif method == "entropy":
-        probs = torch.softmax(logits, dim=1)
-        score = -(probs * torch.log(probs + 1e-8)).sum(dim=1)
+        score = -(semantic_probs * torch.log(semantic_probs + 1e-8)).sum(dim=1)
 
     else:
-        raise ValueError(f"Metodo non riconosciuto: {method}")
+        raise ValueError(f"Unknown method: {method}")
 
     return score
 
@@ -293,16 +340,77 @@ def compute_anomaly_score(pixel_logits, method, temperature=1.0):
 # ---------------------------------------------------------------------
 # Score RbA semplice
 # ---------------------------------------------------------------------
-def compute_rba_score(mask_logits, class_logits, target_size):
+# def compute_rba_score(mask_logits, class_logits, target_size):
+#     """
+#     RbA semplificato per mask architecture.
+
+#     Idea:
+#         un pixel è normale se almeno una query/mask lo accetta con alta confidenza.
+#         un pixel è anomalo se è rifiutato da tutte le query.
+
+#     Output:
+#         anomaly_score: [B, H, W]
+#     """
+
+#     if mask_logits.shape[-2:] != target_size:
+#         mask_logits = F.interpolate(
+#             mask_logits,
+#             size=target_size,
+#             mode="bilinear",
+#             align_corners=False,
+#         )
+
+#     class_probs = class_logits.softmax(dim=-1)[..., :-1]  # rimuove no-object
+#     mask_probs = mask_logits.sigmoid()
+
+#     query_conf = class_probs.max(dim=-1)[0]               # [B, Q]
+#     acceptance = query_conf[:, :, None, None] * mask_probs # [B, Q, H, W]
+
+#     normal_score = acceptance.max(dim=1)[0]               # [B, H, W]
+#     anomaly_score = 1.0 - normal_score
+
+#     return anomaly_score
+
+# def compute_rba_score(mask_logits, class_logits, target_size, temperature=1.0):
+#     """
+#     Simplified RbA score for mask architectures.
+
+#     A pixel is considered in-distribution if at least one query accepts it
+#     with high mask probability and high class confidence.
+#     The anomaly score is one minus the maximum query acceptance score.
+#     """
+
+#     if mask_logits.shape[-2:] != target_size:
+#         mask_logits = F.interpolate(
+#             mask_logits,
+#             size=target_size,
+#             mode="bilinear",
+#             align_corners=False,
+#         )
+
+#     class_probs = torch.softmax(
+#         class_logits / temperature,
+#         dim=-1,
+#     )[..., :-1]
+
+#     mask_probs = mask_logits.sigmoid()
+
+#     query_conf = class_probs.max(dim=-1)[0]
+#     acceptance = query_conf[:, :, None, None] * mask_probs
+
+#     normal_score = acceptance.max(dim=1)[0]
+#     anomaly_score = 1.0 - normal_score
+
+#     return anomaly_score
+
+def compute_rba_score(mask_logits, class_logits, target_size, temperature=1.0):
     """
-    RbA semplificato per mask architecture.
+    RbA-style score for EoMT.
 
-    Idea:
-        un pixel è normale se almeno una query/mask lo accetta con alta confidenza.
-        un pixel è anomalo se è rifiutato da tutte le query.
-
-    Output:
-        anomaly_score: [B, H, W]
+    This follows the paper idea more closely:
+    1. build per-pixel class scores by aggregating query votes;
+    2. map class scores to [0, 1];
+    3. compute the anomaly score as the negative sum of known-class acceptances.
     """
 
     if mask_logits.shape[-2:] != target_size:
@@ -313,14 +421,25 @@ def compute_rba_score(mask_logits, class_logits, target_size):
             align_corners=False,
         )
 
-    class_probs = class_logits.softmax(dim=-1)[..., :-1]  # rimuove no-object
     mask_probs = mask_logits.sigmoid()
 
-    query_conf = class_probs.max(dim=-1)[0]               # [B, Q]
-    acceptance = query_conf[:, :, None, None] * mask_probs # [B, Q, H, W]
+    class_probs = torch.softmax(
+        class_logits / temperature,
+        dim=-1,
+    )[..., :-1]
 
-    normal_score = acceptance.max(dim=1)[0]               # [B, H, W]
-    anomaly_score = 1.0 - normal_score
+    # Per-pixel known-class scores: [B, C, H, W]
+    semantic_scores = torch.einsum(
+        "bqhw,bqc->bchw",
+        mask_probs,
+        class_probs,
+    )
+
+    # RbA paper maps class scores to [0,1]; tanh is used in the paper.
+    known_acceptance = torch.tanh(torch.clamp(semantic_scores, min=0.0))
+
+    # Rejected by all known classes: lower known-class acceptance => higher anomaly.
+    anomaly_score = -known_acceptance.sum(dim=1)
 
     return anomaly_score
 
@@ -443,7 +562,8 @@ def main():
         "--temperature",
         type=float,
         default=1.0,
-        help="Temperature scaling. Usato per MSP/MaxLogit/Entropy. Ignorato per RbA.",
+        help="Temperature scaling. Applied to query class logits before softmax."
+        # help="Temperature scaling. Usato per MSP/MaxLogit/Entropy. Ignorato per RbA.",
     )
 
     parser.add_argument("--patch-size", type=int, default=16)
@@ -492,13 +612,32 @@ def main():
         target_size = (IMG_HEIGHT, IMG_WIDTH)
 
         if args.method == "rba":
-            score = compute_rba_score(mask_logits, class_logits, target_size)
-        else:
-            pixel_logits = eomt_to_pixel_logits(mask_logits, class_logits, target_size)
-            score = compute_anomaly_score(
-                pixel_logits,
-                method=args.method,
+            score = compute_rba_score(
+                mask_logits,
+                class_logits,
+                target_size,
                 temperature=args.temperature,
+            )
+        # if args.method == "rba":
+        #     score = compute_rba_score(mask_logits, class_logits, target_size)
+        else:
+            # pixel_logits = eomt_to_pixel_logits(mask_logits, class_logits, target_size)
+            # score = compute_anomaly_score(
+            #     pixel_logits,
+            #     method=args.method,
+            #     temperature=args.temperature,
+            # )
+            semantic_scores, semantic_probs = eomt_to_pixel_scores(
+                mask_logits,
+                class_logits,
+                target_size,
+                temperature=args.temperature,
+            )
+
+            score = compute_eomt_anomaly_score(
+                semantic_scores,
+                semantic_probs,
+                method=args.method,
             )
 
         anomaly_result = score.squeeze(0).detach().cpu().numpy()
