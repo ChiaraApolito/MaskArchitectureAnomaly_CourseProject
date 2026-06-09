@@ -48,7 +48,6 @@ class MaskClassificationSemantic(LightningModule):
         head_only_no_grad: bool = False,
         class_only_loss: bool = False,
         use_cached_features: bool = False,
-        use_cached_backbone_tokens: bool = False
     ):
         super().__init__(
             network=network,
@@ -73,7 +72,6 @@ class MaskClassificationSemantic(LightningModule):
             freeze_all_except_class_mask_heads=freeze_all_except_class_mask_heads,
             head_only_no_grad=head_only_no_grad,
             use_cached_features=use_cached_features,
-            use_cached_backbone_tokens = use_cached_backbone_tokens
         )
 
         self.save_hyperparameters(ignore=["_class_path"])
@@ -126,7 +124,7 @@ class MaskClassificationSemantic(LightningModule):
                 )
 
     def on_validation_epoch_end(self):
-        # log_per_class=True -> logga metrics/val_iou_class_0..18 (ordine train-id Cityscapes)
+        # if log_per_class=True -> metrics/val_iou_class_0..18
         self._on_eval_epoch_end_semantic("val", log_per_class=True)
 
     def on_validation_end(self):

@@ -1,6 +1,6 @@
 trainer:
   max_epochs: 15
-  precision: 16-mixed          # AMP: meno memoria, training piu' veloce
+  precision: 16-mixed          # AMP
   logger:
     class_path: lightning.pytorch.loggers.wandb.WandbLogger
     init_args:
@@ -8,12 +8,9 @@ trainer:
       project: "eomt"
       name: "stage1_full_head_frozen_dino"
 
-# STAGE 1 (guida Task 5): "fine-tune just the prediction head".
-# Encoder/backbone congelato -> si allenano solo query + mask_head + class_head
-# + scale blocks. La class_head e' random (load_ckpt_class_head: False) perche'
-# Cityscapes ha 19 classi != COCO: questo stage la stabilizza senza distruggere
-# il decoder pre-addestrato su COCO. Nessuna cache: forward normale con
-# augmentation live ad ogni step.
+# STAGE 1 
+# frozen encoder/backbone -> only query + mask_head + class_head + scale-block are trained.
+
 model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
   init_args:
@@ -23,11 +20,11 @@ model:
     freeze_encoder: True
     lr: 1e-4
     weight_decay: 0.05
-    num_points: 12544          # default upstream (non abbassare: la mask loss diventa rumorosa)
+    num_points: 12544          
     network:
       class_path: models.eomt.EoMT
       init_args:
-        num_q: 200             # combacia col checkpoint COCO
+        num_q: 200             
         num_blocks: 3
         masked_attn_enabled: False
         encoder:
@@ -38,4 +35,4 @@ model:
 data:
   class_path: datasets.cityscapes_semantic.CityscapesSemantic
   init_args:
-    img_size: [512, 512]       # piu' veloce su L4; e' l'unico override che si propaga (vedi main.py link_arguments)
+    img_size: [512, 512]       

@@ -69,10 +69,11 @@ class EoMT(nn.Module):
     
     def forward_frozen_features(self, x: torch.Tensor):
         """
-        Esegue il modello frozen e restituisce:
-        - q_features: token query prima della class_head
-        - mask_logits: maschere predette frozen
-        Serve per fare cache e poi allenare solo class_head.
+        Used to create a cache and then train only the class_head.
+        Run the frozen model and return:
+        - q_features: query tokens before the class_head
+        - mask_logits: predicted masks from the frozen model
+
         """
         x = (x - self.encoder.pixel_mean) / self.encoder.pixel_std
 
@@ -277,54 +278,3 @@ class EoMT(nn.Module):
             class_logits_per_layer,
         )
     
-
-    # DA ELIMINARE SE IL CACHE- FINETUNING HEAD+ULTIMI LATERS NON FUNZIONA
-    def forward_from_cached_tokens(self, x):
-        """
-        x: token patch già calcolati dalla parte frozen del backbone,
-        prima dell'inserimento delle query.
-        """
-
-        attn_mask = None
-        mask_logits_per_layer, class_logits_per_layer = [], []
-
-        start_i = len(self.encoder.backbone.blocks) - self.num_blocks
-
-        for i, block in enumerate(self.encoder.backbone.blocks[start_i:], start=start_i):
-
-            if i == start_i:
-                x = torch.cat(
-                    (self.q.weight[None, :, :].expand(x.shape[0], -1, -1), x),
-                    dim=1,
-                )
-
-            if self.masked_attn_enabled:
-                mask_logits, class_logits = self._predict(self.encoder.backbone.norm(x))
-                mask_logits_per_layer.append(mask_logits)
-                class_logits_per_layer.append(class_logits)
-                attn_mask = self._attn_mask(x, mask_logits, i)
-
-            if hasattr(block, "attn"):
-                attn = block.attn
-            else:
-                attn = block.attention
-
-            attn_out = self._attn(attn, block.norm1(x), attn_mask, rope=None)
-
-            if hasattr(block, "ls1"):
-                x = x + block.ls1(attn_out)
-            elif hasattr(block, "layer_scale1"):
-                x = x + block.layer_scale1(attn_out)
-
-            mlp_out = block.mlp(block.norm2(x))
-
-            if hasattr(block, "ls2"):
-                x = x + block.ls2(mlp_out)
-            elif hasattr(block, "layer_scale2"):
-                x = x + block.layer_scale2(mlp_out)
-
-        mask_logits, class_logits = self._predict(self.encoder.backbone.norm(x))
-        mask_logits_per_layer.append(mask_logits)
-        class_logits_per_layer.append(class_logits)
-
-        return mask_logits_per_layer, class_logits_per_layer

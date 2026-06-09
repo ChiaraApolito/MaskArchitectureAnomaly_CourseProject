@@ -1,11 +1,10 @@
 # ---------------------------------------------------------------
-# Versione di evalAnomaly.py adattata a EoMT.
+# evalAnomaly.py adapted for EoMT model.
 #
-# Gestisce:
-#   1) checkpoint COCO / Cityscapes / fine-tuned
+#   1) COCO / Cityscapes / fine-tuned checkpoints
 #   2) MSP / MaxLogit / Entropy / RbA
 #   3) temperature scaling
-#   4) salvataggio CSV
+#   4) CSV saving
 # ---------------------------------------------------------------
 
 import os
@@ -24,16 +23,6 @@ from torchvision.transforms import Compose, Resize, ToTensor
 from sklearn.metrics import average_precision_score
 
 
-# ---------------------------------------------------------------------
-# Permette di importare models.vit e models.eomt anche se il file è in eval/
-# ---------------------------------------------------------------------
-# REPO_ROOT = Path(__file__).resolve().parents[1]
-# if str(REPO_ROOT) not in sys.path:
-#     sys.path.insert(0, str(REPO_ROOT))
-
-# from models.vit import ViT
-# from models.eomt import EoMT
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EOMT_ROOT = PROJECT_ROOT / "eomt"
 
@@ -44,9 +33,6 @@ for p in [PROJECT_ROOT, EOMT_ROOT]:
 from models.vit import ViT
 from models.eomt import EoMT
 
-# ---------------------------------------------------------------------
-# Seed
-# ---------------------------------------------------------------------
 seed = 42
 
 # general reproducibility
@@ -75,19 +61,15 @@ target_transform = Compose(
 )
 
 
-# ---------------------------------------------------------------------
-# Preset checkpoint
-# ---------------------------------------------------------------------
 def apply_preset(args):
     """
-    Preset pratici per evitare di scrivere ogni volta num_classes e num_q.
+    Preset to automatically configure num_classes and num_q based on the chosen checkpoint type.
 
     Cityscapes semantic:
         num_classes = 19
         num_q = 100
 
-    Fine-tuned su Cityscapes:
-        stessa architettura del Cityscapes semantic
+    Fine-tuned on Cityscapes:
         num_classes = 19
         num_q = 200
 
@@ -109,27 +91,18 @@ def apply_preset(args):
         args.num_q = 200
 
     else:
-        raise ValueError(f"Preset non riconosciuto: {args.preset}")
+        raise ValueError(f"Preset not recognized: {args.preset}")
 
     return args
 
 
-# ---------------------------------------------------------------------
-# Costruzione modello EoMT
-# ---------------------------------------------------------------------
-
 def build_eomt(args):
     """
-    Costruisce EoMT in modo coerente con i config:
+    Builds EoMT in a consistent way with the configuration:
 
     models.eomt.EoMT
       encoder: models.vit.ViT
         backbone_name: vit_base_patch14_reg4_dinov2
-
-    Nota:
-    - ViT contiene pixel_mean/pixel_std.
-    - Quindi le immagini devono entrare come tensori [0, 1].
-    - Non bisogna applicare Normalize() nel transform.
     """
 
     encoder = ViT(
@@ -152,9 +125,6 @@ def build_eomt(args):
     return model
 
 
-# ---------------------------------------------------------------------
-# Caricamento pesi
-# ---------------------------------------------------------------------
 def load_eomt_weights(model, weights_path):
     ckpt = torch.load(weights_path, map_location="cpu")
 
@@ -208,8 +178,8 @@ def load_eomt_weights(model, weights_path):
             new_ckpt[pos_key] = pos_2d.permute(0, 2, 3, 1).reshape(1, h_model * w_model, dim)
     incompatible = model.load_state_dict(new_ckpt, strict=False)
 
-    print("Checkpoint caricato:", weights_path)
-    print("Numero chiavi checkpoint:", len(new_ckpt))
+    print("Loaded checkpoint:", weights_path)
+    print("Number of keys in checkpoint:", len(new_ckpt))
 
     if incompatible.missing_keys:
         print("\nMissing keys:")
@@ -228,40 +198,12 @@ def load_eomt_weights(model, weights_path):
     return model
 
 
-# # ---------------------------------------------------------------------
-# # Conversione output EoMT -> pixel logits
-# # ---------------------------------------------------------------------
-# def eomt_to_pixel_logits(mask_logits, class_logits, target_size):
-#     """
-#     Stessa logica di training/lightning_module.py:
-
-#     torch.einsum(
-#         "bqhw, bqc -> bchw",
-#         mask_logits.sigmoid(),
-#         class_logits.softmax(dim=-1)[..., :-1],
-#     )
-
-#     Output:
-#         pixel_logits: [B, C, H, W]
-#     """
-
-#     if mask_logits.shape[-2:] != target_size:
-#         mask_logits = F.interpolate(
-#             mask_logits,
-#             size=target_size,
-#             mode="bilinear",
-#             align_corners=False,
-#         )
-
-#     pixel_logits = torch.einsum(
-#         "bqhw,bqc->bchw",
-#         mask_logits.sigmoid(),
-#         class_logits.softmax(dim=-1)[..., :-1],
-#     )
-
-#     return pixel_logits
-
 def eomt_to_pixel_scores(mask_logits, class_logits, target_size, temperature=1.0):
+    """
+    Convert mask-query outputs (mask logits and class logits) into dense
+    per-pixel semantic scores and probabilities of shape [B, C, H, W]
+    comparable to ERFNet outputs.
+    """
     if mask_logits.shape[-2:] != target_size:
         mask_logits = F.interpolate(
             mask_logits,
@@ -290,38 +232,11 @@ def eomt_to_pixel_scores(mask_logits, class_logits, target_size, temperature=1.0
     return semantic_scores, semantic_probs
 
 
-# ---------------------------------------------------------------------
-# Score anomaly MSP / MaxLogit / Entropy
-# ---------------------------------------------------------------------
-# def compute_anomaly_score(pixel_logits, method, temperature=1.0):
-#     """
-#     logits: torch.Tensor [B, C, H, W]
-#     returns: np.ndarray [H, W]
-#     """
-
-#     logits = pixel_logits / temperature
-
-#     if method == "maxlogit":
-#         score = -torch.max(logits, dim=1)[0]
-
-#     elif method == "msp":
-#         probs = torch.softmax(logits, dim=1)
-#         score = 1.0 - torch.max(probs, dim=1)[0]
-
-#     elif method == "entropy":
-#         probs = torch.softmax(logits, dim=1)
-#         score = -(probs * torch.log(probs + 1e-8)).sum(dim=1)
-
-#     else:
-#         raise ValueError(f"Metodo non riconosciuto: {method}")
-
-#     return score
-
-def compute_eomt_anomaly_score(
-    semantic_scores,
-    semantic_probs,
-    method,
-):
+def compute_eomt_anomaly_score(semantic_scores, semantic_probs, method):
+    """
+    Compute anomaly score from per-pixel semantic scores/probs using
+    MaxLogit-like, MSP and MaxEntropy methods.
+    """
     if method == "maxlogit":
         score = -torch.max(semantic_scores, dim=1)[0]
 
@@ -337,77 +252,11 @@ def compute_eomt_anomaly_score(
     return score
 
 
-# ---------------------------------------------------------------------
-# Score RbA semplice
-# ---------------------------------------------------------------------
-# def compute_rba_score(mask_logits, class_logits, target_size):
-#     """
-#     RbA semplificato per mask architecture.
-
-#     Idea:
-#         un pixel è normale se almeno una query/mask lo accetta con alta confidenza.
-#         un pixel è anomalo se è rifiutato da tutte le query.
-
-#     Output:
-#         anomaly_score: [B, H, W]
-#     """
-
-#     if mask_logits.shape[-2:] != target_size:
-#         mask_logits = F.interpolate(
-#             mask_logits,
-#             size=target_size,
-#             mode="bilinear",
-#             align_corners=False,
-#         )
-
-#     class_probs = class_logits.softmax(dim=-1)[..., :-1]  # rimuove no-object
-#     mask_probs = mask_logits.sigmoid()
-
-#     query_conf = class_probs.max(dim=-1)[0]               # [B, Q]
-#     acceptance = query_conf[:, :, None, None] * mask_probs # [B, Q, H, W]
-
-#     normal_score = acceptance.max(dim=1)[0]               # [B, H, W]
-#     anomaly_score = 1.0 - normal_score
-
-#     return anomaly_score
-
-# def compute_rba_score(mask_logits, class_logits, target_size, temperature=1.0):
-#     """
-#     Simplified RbA score for mask architectures.
-
-#     A pixel is considered in-distribution if at least one query accepts it
-#     with high mask probability and high class confidence.
-#     The anomaly score is one minus the maximum query acceptance score.
-#     """
-
-#     if mask_logits.shape[-2:] != target_size:
-#         mask_logits = F.interpolate(
-#             mask_logits,
-#             size=target_size,
-#             mode="bilinear",
-#             align_corners=False,
-#         )
-
-#     class_probs = torch.softmax(
-#         class_logits / temperature,
-#         dim=-1,
-#     )[..., :-1]
-
-#     mask_probs = mask_logits.sigmoid()
-
-#     query_conf = class_probs.max(dim=-1)[0]
-#     acceptance = query_conf[:, :, None, None] * mask_probs
-
-#     normal_score = acceptance.max(dim=1)[0]
-#     anomaly_score = 1.0 - normal_score
-
-#     return anomaly_score
-
 def compute_rba_score(mask_logits, class_logits, target_size, temperature=1.0):
     """
     RbA-style score for EoMT.
+    Rejected by all known classes: lower known-class acceptance => higher anomaly.
 
-    This follows the paper idea more closely:
     1. build per-pixel class scores by aggregating query votes;
     2. map class scores to [0, 1];
     3. compute the anomaly score as the negative sum of known-class acceptances.
@@ -428,25 +277,19 @@ def compute_rba_score(mask_logits, class_logits, target_size, temperature=1.0):
         dim=-1,
     )[..., :-1]
 
-    # Per-pixel known-class scores: [B, C, H, W]
     semantic_scores = torch.einsum(
         "bqhw,bqc->bchw",
         mask_probs,
         class_probs,
     )
 
-    # RbA paper maps class scores to [0,1]; tanh is used in the paper.
     known_acceptance = torch.tanh(torch.clamp(semantic_scores, min=0.0))
 
-    # Rejected by all known classes: lower known-class acceptance => higher anomaly.
     anomaly_score = -known_acceptance.sum(dim=1)
 
     return anomaly_score
 
 
-# ---------------------------------------------------------------------
-# Path e conversione GT anomaly
-# ---------------------------------------------------------------------
 def get_gt_path(path):
     pathGT = path.replace("images", "labels_masks")
 
@@ -463,13 +306,6 @@ def get_gt_path(path):
 
 
 def convert_gt(ood_gts, pathGT):
-    """
-    Mantiene la stessa logica del vecchio evalAnomaly.py.
-    Valori finali:
-        0   = normale
-        1   = anomalo
-        255 = ignore
-    """
 
     if "RoadAnomaly" in pathGT:
         ood_gts = np.where((ood_gts == 2), 1, ood_gts)
@@ -486,10 +322,6 @@ def convert_gt(ood_gts, pathGT):
 
     return ood_gts
 
-
-# ---------------------------------------------------------------------
-# Salvataggio CSV
-# ---------------------------------------------------------------------
 def save_csv(args, auprc, fpr95, num_images, num_pixels, num_anomaly_pixels):
     file_exists = os.path.exists(args.results_csv)
 
@@ -520,12 +352,10 @@ def save_csv(args, auprc, fpr95, num_images, num_pixels, num_anomaly_pixels):
 
         writer.writerow(row)
 
-    print("Risultati salvati in:", args.results_csv)
+    print("Results saved in:", args.results_csv)
 
 
-# ---------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------
+
 def main():
     parser = ArgumentParser()
 
@@ -533,21 +363,20 @@ def main():
         "--input",
         default="../datasets/anomaly/Anomaly_Validation_Datasets/RoadAnomaly/images/*.jpg",
         nargs="+",
-        help="Glob pattern immagini, come nel vecchio evalAnomaly.py",
     )
 
     parser.add_argument("--weights", required=True)
     parser.add_argument(
         "--checkpoint-name",
         default="eomt",
-        help="Nome libero da salvare nel CSV",
+        help="name for saving CSV",
     )
 
     parser.add_argument(
         "--preset",
         default="cityscapes",
         choices=["cityscapes", "coco", "finetuned"],
-        help="Sceglie automaticamente num_classes e num_q",
+        help="automatically set num_classes and num_q",
     )
 
     parser.add_argument("--num-blocks", type=int, default=3)
@@ -562,8 +391,7 @@ def main():
         "--temperature",
         type=float,
         default=1.0,
-        help="Temperature scaling. Applied to query class logits before softmax."
-        # help="Temperature scaling. Usato per MSP/MaxLogit/Entropy. Ignorato per RbA.",
+        help="Temperature scaling.",
     )
 
     parser.add_argument("--patch-size", type=int, default=16)
@@ -580,7 +408,7 @@ def main():
     print("Preset:", args.preset)
     print("num_classes:", args.num_classes)
     print("num_q:", args.num_q)
-    print("Metodo:", args.method)
+    print("Method:", args.method)
     print("Temperature:", args.temperature)
 
     model = build_eomt(args)
@@ -592,10 +420,10 @@ def main():
     ood_gts_list = []
 
     paths = sorted(glob.glob(os.path.expanduser(str(args.input[0]))))
-    print("Numero immagini trovate:", len(paths))
+    print("Number of images found:", len(paths))
 
     if len(paths) == 0:
-        raise RuntimeError("Nessuna immagine trovata. Controlla --input.")
+        raise RuntimeError("No images found. Check --input.")
 
     for i, path in enumerate(paths):
         print(f"[{i+1}/{len(paths)}] {path}")
@@ -618,15 +446,8 @@ def main():
                 target_size,
                 temperature=args.temperature,
             )
-        # if args.method == "rba":
-        #     score = compute_rba_score(mask_logits, class_logits, target_size)
+        
         else:
-            # pixel_logits = eomt_to_pixel_logits(mask_logits, class_logits, target_size)
-            # score = compute_anomaly_score(
-            #     pixel_logits,
-            #     method=args.method,
-            #     temperature=args.temperature,
-            # )
             semantic_scores, semantic_probs = eomt_to_pixel_scores(
                 mask_logits,
                 class_logits,
@@ -645,7 +466,7 @@ def main():
         pathGT = get_gt_path(path)
 
         if not os.path.exists(pathGT):
-            print("GT non trovata, salto:", pathGT)
+            print("Ground truth not found, skipping:", pathGT)
             continue
 
         mask = Image.open(pathGT)
@@ -665,7 +486,7 @@ def main():
         if device.type == "cuda":torch.cuda.empty_cache()
 
     if len(ood_gts_list) == 0:
-        raise RuntimeError("Nessuna ground truth valida trovata.")
+        raise RuntimeError("No valid ground truth found.")
 
     val_label = np.concatenate(ood_gts_list)
     val_out = np.concatenate(anomaly_score_list)

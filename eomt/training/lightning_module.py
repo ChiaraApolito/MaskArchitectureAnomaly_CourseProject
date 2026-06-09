@@ -46,8 +46,7 @@ class HeadOnlyGradWrapper(nn.Module):
         self.head = head
 
     def forward(self, x):
-        # x viene staccato dal grafo del backbone/mask branch.
-        # La head però resta allenabile.
+        # wrapping class_head so it can still receive gradients and be trained
         with torch.enable_grad():
             return self.head(x.detach())
         
@@ -77,7 +76,6 @@ class LightningModule(lightning.LightningModule):
         freeze_all_except_class_mask_heads: bool = False,
         head_only_no_grad: bool = False,
         use_cached_features: bool = False,
-        use_cached_backbone_tokens: bool = False
     ):
         super().__init__()
 
@@ -96,7 +94,7 @@ class LightningModule(lightning.LightningModule):
         self.llrd_l2_enabled = llrd_l2_enabled
         self.head_only_no_grad = head_only_no_grad
         self.use_cached_features = use_cached_features
-        self.use_cached_backbone_tokens = use_cached_backbone_tokens
+
 
         self.strict_loading = False
 
@@ -128,7 +126,7 @@ class LightningModule(lightning.LightningModule):
             for param in self.network.class_head.parameters():
                 param.requires_grad_(True)
 
-            # Optional: wrap class_head so it can still receive gradients
+            # wrap class_head so it can still receive gradients
             # even if the rest of the network forward is executed under torch.no_grad().
             if self.head_only_no_grad:
                 self.network.class_head = HeadOnlyGradWrapper(self.network.class_head)
@@ -151,30 +149,35 @@ class LightningModule(lightning.LightningModule):
                 logging.info(f"  {name}")
 
             if num_trainable == 0:
-                raise RuntimeError("No trainable parameters found in class_head.")  
+                raise RuntimeError("No trainable parameters found in class_head.") 
+         
         elif freeze_all_except_class_mask_heads:
-            # Stage 0: allena solo class_head + mask_head. Encoder (DINO), query e
-            # scale-block restano congelati: si adatta la classificazione e si lasciano
-            # muovere le maschere (le "chiavi" di mask_head) sulle feature COCO fisse.
+            # Stage 0: class_head + mask_head training. 
+
+            # Freeze everything in the EoMT network 
             for param in self.network.parameters():
                 param.requires_grad_(False)
+            
+            # Unfreeze only the classification and mask heads
             for module in (self.network.class_head, self.network.mask_head):
                 for param in module.parameters():
                     param.requires_grad_(True)
+        
         elif  freeze_encoder_except_last_n > 0:
-            # 1. Congela TUTTO il network EoMT
+            # Stage2
+
+            # Freeze everything in the EoMT network
             for param in self.network.parameters():
                 param.requires_grad_(False)
 
-            # 2. Sblocca solo gli ultimi N blocchi dell'encoder/backbone
+            # Unfreeze the last n blocks of the encoder
             blocks = list(self.network.encoder.backbone.blocks)
             for block in blocks[-freeze_encoder_except_last_n:]:
                 for param in block.parameters():
                     param.requires_grad_(True)
 
-            # 3. Sblocca tutta la testa (come in Stage 1) cosi' si co-adatta agli
-            #    ultimi blocchi dell'encoder appena scongelati: class_head, mask_head,
-            #    query e scale-block. Restano frozen solo i blocchi profondi del ViT.
+            # unfreeze full prediction head:
+            # class_head, mask_head, query e scale-block. 
             head_modules = [
                 self.network.class_head,
                 self.network.mask_head,
@@ -185,7 +188,6 @@ class LightningModule(lightning.LightningModule):
                 for param in module.parameters():
                     param.requires_grad_(True)
 
-            # 4. Log di controllo
             num_trainable = sum(
                 p.numel() for p in self.network.parameters() if p.requires_grad
             )
@@ -200,7 +202,9 @@ class LightningModule(lightning.LightningModule):
             for name, param in self.network.named_parameters():
                 if param.requires_grad:
                     logging.info(f"  {name}")
+
         elif freeze_encoder:
+            # Stage1
             for param in self.network.encoder.parameters():
                 param.requires_grad_(False)
 
@@ -284,7 +288,7 @@ class LightningModule(lightning.LightningModule):
         return self.network(x)
 
     def training_step(self, batch, batch_idx):
-        # Caso B: training con cache LIGHT
+        # training class_head-only with light cache case
         # batch = (q_features, query_class_targets)
         if getattr(self, "use_cached_features", False):
             q_features, query_class_targets = batch
@@ -311,33 +315,7 @@ class LightningModule(lightning.LightningModule):
 
             return loss
         
-        if getattr(self, "use_cached_backbone_tokens", False):
-            cached_tokens, targets = batch
-
-            cached_tokens = cached_tokens.float()
-
-            mask_logits_per_block, class_logits_per_block = (
-                self.network.forward_from_cached_tokens(cached_tokens)
-            )
-
-            losses_all_blocks = {}
-
-            for i, (mask_logits, class_logits) in enumerate(
-                zip(mask_logits_per_block, class_logits_per_block)
-            ):
-                losses = self.criterion(
-                    masks_queries_logits=mask_logits,
-                    class_queries_logits=class_logits,
-                    targets=targets,
-                )
-
-                block_postfix = self.block_postfix(i)
-                losses = {f"{key}{block_postfix}": value for key, value in losses.items()}
-                losses_all_blocks |= losses
-
-            return self.criterion.loss_total(losses_all_blocks, self.log)
-
-        # Caso A: training normale
+        #general training case
         imgs, targets = batch
 
         if getattr(self, "head_only_no_grad", False) and self.training:

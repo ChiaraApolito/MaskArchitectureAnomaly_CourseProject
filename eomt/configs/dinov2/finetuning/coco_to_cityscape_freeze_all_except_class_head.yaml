@@ -1,12 +1,14 @@
 trainer:
   max_epochs: 50
-  precision: 16-mixed
+  precision: 16-mixed        #AMP
   logger:
     class_path: lightning.pytorch.loggers.wandb.WandbLogger
     init_args:
       resume: allow
       project: "eomt"
       name: "coco_to_cityscapes_finetune_head_only_fast"
+
+# only class_head trained (with cached features for faster finetuning)
 
 model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
@@ -22,7 +24,7 @@ model:
     lr: 1e-4
 
     network:
-      class_path: models.eomt_finetuning.EoMT     #l'ho cambiato!!!!!!!
+      class_path: models.eomt_finetuning.EoMT     
       init_args:
         num_q: 200
         num_blocks: 3
