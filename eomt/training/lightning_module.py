@@ -15,6 +15,7 @@ from lightning.fabric.utilities import rank_zero_info
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
+import torch.nn.functional as F
 from torchmetrics.classification import MulticlassJaccardIndex
 from torchmetrics.detection import PanopticQuality, MeanAveragePrecision
 from torchmetrics.functional.detection._panoptic_quality_common import (
@@ -39,6 +40,16 @@ from training.two_stage_warmup_poly_schedule import TwoStageWarmupPolySchedule
 bold_green = "\033[1;32m"
 reset = "\033[0m"
 
+class HeadOnlyGradWrapper(nn.Module):
+    def __init__(self, head: nn.Module):
+        super().__init__()
+        self.head = head
+
+    def forward(self, x):
+        # wrapping class_head so it can still receive gradients and be trained
+        with torch.enable_grad():
+            return self.head(x.detach())
+        
 
 class LightningModule(lightning.LightningModule):
     def __init__(
@@ -59,6 +70,12 @@ class LightningModule(lightning.LightningModule):
         ckpt_path=None,
         delta_weights=False,
         load_ckpt_class_head=True,
+        freeze_encoder: bool = False,
+        freeze_encoder_except_last_n: int = 0,
+        freeze_all_except_class_head: bool = False,
+        freeze_all_except_class_mask_heads: bool = False,
+        head_only_no_grad: bool = False,
+        use_cached_features: bool = False,
     ):
         super().__init__()
 
@@ -75,6 +92,9 @@ class LightningModule(lightning.LightningModule):
         self.poly_power = poly_power
         self.warmup_steps = warmup_steps
         self.llrd_l2_enabled = llrd_l2_enabled
+        self.head_only_no_grad = head_only_no_grad
+        self.use_cached_features = use_cached_features
+
 
         self.strict_loading = False
 
@@ -97,7 +117,99 @@ class LightningModule(lightning.LightningModule):
             incompatible_keys = self.load_state_dict(ckpt, strict=False)
             self._raise_on_incompatible(incompatible_keys, load_ckpt_class_head)
 
+        if freeze_all_except_class_head:
+            # Freeze everything in the EoMT network
+            for param in self.network.parameters():
+                param.requires_grad_(False)
+
+            # Unfreeze only the classification head
+            for param in self.network.class_head.parameters():
+                param.requires_grad_(True)
+
+            # wrap class_head so it can still receive gradients
+            # even if the rest of the network forward is executed under torch.no_grad().
+            if self.head_only_no_grad:
+                self.network.class_head = HeadOnlyGradWrapper(self.network.class_head)
+
+            num_trainable = sum(p.numel() for p in self.network.parameters() if p.requires_grad)
+            num_total = sum(p.numel() for p in self.network.parameters())
+
+            logging.info(
+                f"Trainable network parameters: {num_trainable:,} / {num_total:,} "
+                f"({100 * num_trainable / num_total:.4f}%)"
+            )
+
+            trainable = [
+                name for name, param in self.network.named_parameters()
+                if param.requires_grad
+            ]
+
+            logging.info("Trainable parameters:")
+            for name in trainable:
+                logging.info(f"  {name}")
+
+            if num_trainable == 0:
+                raise RuntimeError("No trainable parameters found in class_head.") 
+         
+        elif freeze_all_except_class_mask_heads:
+            # Stage 0: class_head + mask_head training. 
+
+            # Freeze everything in the EoMT network 
+            for param in self.network.parameters():
+                param.requires_grad_(False)
+            
+            # Unfreeze only the classification and mask heads
+            for module in (self.network.class_head, self.network.mask_head):
+                for param in module.parameters():
+                    param.requires_grad_(True)
+        
+        elif  freeze_encoder_except_last_n > 0:
+            # Stage2
+
+            # Freeze everything in the EoMT network
+            for param in self.network.parameters():
+                param.requires_grad_(False)
+
+            # Unfreeze the last n blocks of the encoder
+            blocks = list(self.network.encoder.backbone.blocks)
+            for block in blocks[-freeze_encoder_except_last_n:]:
+                for param in block.parameters():
+                    param.requires_grad_(True)
+
+            # unfreeze full prediction head:
+            # class_head, mask_head, query e scale-block. 
+            head_modules = [
+                self.network.class_head,
+                self.network.mask_head,
+                self.network.q,
+                self.network.upscale,
+            ]
+            for module in head_modules:
+                for param in module.parameters():
+                    param.requires_grad_(True)
+
+            num_trainable = sum(
+                p.numel() for p in self.network.parameters() if p.requires_grad
+            )
+            num_total = sum(p.numel() for p in self.network.parameters())
+
+            logging.info(
+                f"Trainable network parameters: {num_trainable:,} / {num_total:,} "
+                f"({100 * num_trainable / num_total:.4f}%)"
+            )
+
+            logging.info("Trainable parameters:")
+            for name, param in self.network.named_parameters():
+                if param.requires_grad:
+                    logging.info(f"  {name}")
+
+        elif freeze_encoder:
+            # Stage1
+            for param in self.network.encoder.parameters():
+                param.requires_grad_(False)
+
         self.log = torch.compiler.disable(self.log)  # type: ignore
+
 
     def configure_optimizers(self):
         encoder_param_names = {
@@ -113,6 +225,8 @@ class LightningModule(lightning.LightningModule):
         ).tolist()
 
         for name, param in reversed(list(self.named_parameters())):
+            if not param.requires_grad:
+                continue
             lr = self.lr
 
             if name.replace("network.encoder.backbone.", "") in encoder_param_names:
@@ -174,11 +288,44 @@ class LightningModule(lightning.LightningModule):
         return self.network(x)
 
     def training_step(self, batch, batch_idx):
+        # training class_head-only with light cache case
+        # batch = (q_features, query_class_targets)
+        if getattr(self, "use_cached_features", False):
+            q_features, query_class_targets = batch
+
+            class_logits = self.network.class_head(q_features)
+
+            empty_weight = self.criterion.empty_weight.to(
+                device=class_logits.device,
+                dtype=class_logits.dtype,
+            )
+
+            loss = F.cross_entropy(
+                class_logits.transpose(1, 2),
+                query_class_targets.long(),
+                weight=empty_weight,
+            )
+
+            self.log(
+                "losses/train_loss_total",
+                loss,
+                prog_bar=True,
+                sync_dist=True,
+            )
+
+            return loss
+        
+        #general training case
         imgs, targets = batch
 
-        mask_logits_per_block, class_logits_per_block = self(imgs)
+        if getattr(self, "head_only_no_grad", False) and self.training:
+            with torch.no_grad():
+                mask_logits_per_block, class_logits_per_block = self(imgs)
+        else:
+            mask_logits_per_block, class_logits_per_block = self(imgs)
 
         losses_all_blocks = {}
+
         for i, (mask_logits, class_logits) in enumerate(
             list(zip(mask_logits_per_block, class_logits_per_block))
         ):
@@ -187,6 +334,7 @@ class LightningModule(lightning.LightningModule):
                 class_queries_logits=class_logits,
                 targets=targets,
             )
+
             block_postfix = self.block_postfix(i)
             losses = {f"{key}{block_postfix}": value for key, value in losses.items()}
             losses_all_blocks |= losses
@@ -889,6 +1037,20 @@ class LightningModule(lightning.LightningModule):
                 for k, v in ckpt.items()
                 if "class_head" not in k and "class_predictor" not in k
             }
+        pos_key = "network.encoder.backbone.pos_embed"
+        if pos_key in ckpt and pos_key in self.state_dict():
+            ckpt_pos = ckpt[pos_key]
+            model_pos_shape = self.state_dict()[pos_key].shape
+            if ckpt_pos.shape != model_pos_shape:
+                N_ckpt, D = ckpt_pos.shape[1], ckpt_pos.shape[2]
+                N_model = model_pos_shape[1]
+                H_c = W_c = int(N_ckpt ** 0.5)
+                H_m = W_m = int(N_model ** 0.5)
+                pos_2d = ckpt_pos.reshape(1, H_c, W_c, D).permute(0, 3, 1, 2)
+                pos_2d = torch.nn.functional.interpolate(pos_2d, size=(H_m, W_m), mode="bicubic", align_corners=False)
+                ckpt[pos_key] = pos_2d.permute(0, 2, 3, 1).reshape(1, N_model, D)
+                logging.info(f"Interpolated pos_embed from {N_ckpt} to {N_model} tokens")
+
         logging.info(f"Loaded {len(ckpt)} keys")
         return ckpt
 

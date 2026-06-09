@@ -41,6 +41,13 @@ class MaskClassificationSemantic(LightningModule):
         ckpt_path: Optional[str] = None,
         delta_weights: bool = False,
         load_ckpt_class_head: bool = True,
+        freeze_encoder: bool = False,
+        freeze_encoder_except_last_n: int = 0,
+        freeze_all_except_class_head: bool = False,
+        freeze_all_except_class_mask_heads: bool = False,
+        head_only_no_grad: bool = False,
+        class_only_loss: bool = False,
+        use_cached_features: bool = False,
     ):
         super().__init__(
             network=network,
@@ -59,6 +66,12 @@ class MaskClassificationSemantic(LightningModule):
             ckpt_path=ckpt_path,
             delta_weights=delta_weights,
             load_ckpt_class_head=load_ckpt_class_head,
+            freeze_encoder=freeze_encoder,
+            freeze_encoder_except_last_n=freeze_encoder_except_last_n,
+            freeze_all_except_class_head = freeze_all_except_class_head,
+            freeze_all_except_class_mask_heads=freeze_all_except_class_mask_heads,
+            head_only_no_grad=head_only_no_grad,
+            use_cached_features=use_cached_features,
         )
 
         self.save_hyperparameters(ignore=["_class_path"])
@@ -77,6 +90,7 @@ class MaskClassificationSemantic(LightningModule):
             class_coefficient=class_coefficient,
             num_labels=num_classes,
             no_object_coefficient=no_object_coefficient,
+            class_only_loss=class_only_loss,
         )
 
         self.init_metrics_semantic(ignore_idx, self.network.num_blocks + 1 if self.network.masked_attn_enabled else 1)
@@ -110,7 +124,8 @@ class MaskClassificationSemantic(LightningModule):
                 )
 
     def on_validation_epoch_end(self):
-        self._on_eval_epoch_end_semantic("val")
+        # if log_per_class=True -> metrics/val_iou_class_0..18
+        self._on_eval_epoch_end_semantic("val", log_per_class=True)
 
     def on_validation_end(self):
         self._on_eval_end_semantic("val")

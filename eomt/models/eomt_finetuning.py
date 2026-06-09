@@ -14,7 +14,6 @@ import math
 
 from models.scale_block import ScaleBlock
 
-
 class EoMT(nn.Module):
     def __init__(
         self,
@@ -67,6 +66,82 @@ class EoMT(nn.Module):
         )
 
         return mask_logits, class_logits
+    
+    def forward_frozen_features(self, x: torch.Tensor):
+        """
+        Used to create a cache and then train only the class_head.
+        Run the frozen model and return:
+        - q_features: query tokens before the class_head
+        - mask_logits: predicted masks from the frozen model
+
+        """
+        x = (x - self.encoder.pixel_mean) / self.encoder.pixel_std
+
+        rope = None
+        if hasattr(self.encoder.backbone, "rope_embeddings"):
+            rope = self.encoder.backbone.rope_embeddings(x)
+
+        x = self.encoder.backbone.patch_embed(x)
+
+        if hasattr(self.encoder.backbone, "_pos_embed"):
+            x = self.encoder.backbone._pos_embed(x)
+
+        attn_mask = None
+
+        for i, block in enumerate(self.encoder.backbone.blocks):
+            if i == len(self.encoder.backbone.blocks) - self.num_blocks:
+                x = torch.cat(
+                    (self.q.weight[None, :, :].expand(x.shape[0], -1, -1), x),
+                    dim=1,
+                )
+
+            if (
+                self.masked_attn_enabled
+                and i >= len(self.encoder.backbone.blocks) - self.num_blocks
+            ):
+                mask_logits, _ = self._predict(self.encoder.backbone.norm(x))
+                attn_mask = self._attn_mask(x, mask_logits, i)
+
+            if hasattr(block, "attn"):
+                attn = block.attn
+            else:
+                attn = block.attention
+
+            attn_out = self._attn(attn, block.norm1(x), attn_mask, rope=rope)
+
+            if hasattr(block, "ls1"):
+                x = x + block.ls1(attn_out)
+            elif hasattr(block, "layer_scale1"):
+                x = x + block.layer_scale1(attn_out)
+
+            mlp_out = block.mlp(block.norm2(x))
+
+            if hasattr(block, "ls2"):
+                x = x + block.ls2(mlp_out)
+            elif hasattr(block, "layer_scale2"):
+                x = x + block.layer_scale2(mlp_out)
+
+        x_norm = self.encoder.backbone.norm(x)
+
+        q_features = x_norm[:, : self.num_q, :].detach()
+
+        patch_tokens = x_norm[
+            :, self.num_q + self.encoder.backbone.num_prefix_tokens :, :
+        ]
+
+        patch_tokens = patch_tokens.transpose(1, 2).reshape(
+            patch_tokens.shape[0],
+            -1,
+            *self.encoder.backbone.patch_embed.grid_size,
+        )
+
+        mask_logits = torch.einsum(
+            "bqc, bchw -> bqhw",
+            self.mask_head(q_features),
+            self.upscale(patch_tokens),
+        ).detach()
+
+        return q_features, mask_logits
 
     @torch.compiler.disable
     def _disable_attn_mask(self, attn_mask, prob):
@@ -202,3 +277,4 @@ class EoMT(nn.Module):
             mask_logits_per_layer,
             class_logits_per_layer,
         )
+    

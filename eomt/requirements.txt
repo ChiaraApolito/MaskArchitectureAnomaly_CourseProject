@@ -1,3 +1,4 @@
+numpy>=2.0,<2.3
 gitignore_parser==0.1.12
 jsonargparse[signatures]==4.38
 matplotlib==3.10.1
@@ -13,3 +14,5 @@ fvcore==0.1.5.post20221221
 torchmetrics==1.7.1
 pycocotools==2.0.8
 pandas>=2.0
+ood_metrics
+xlsxwriter

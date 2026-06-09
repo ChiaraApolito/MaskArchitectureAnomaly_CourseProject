@@ -1,15 +1,15 @@
 trainer:
-  max_epochs: 15
+  max_epochs: 10
   precision: 16-mixed          # AMP
   logger:
     class_path: lightning.pytorch.loggers.wandb.WandbLogger
     init_args:
       resume: allow
       project: "eomt"
-      name: "stage1_full_head_frozen_dino"
+      name: "stage0_class_head_n_mask_head"
 
-# STAGE 1 
-# frozen encoder/backbone -> only query + mask_head + class_head + scale-block are trained.
+# STAGE 0 
+# Encoder + query + scale-block frozen -> class_head + mask_head trained.
 
 model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
@@ -17,14 +17,14 @@ model:
     attn_mask_annealing_enabled: False
     ckpt_path: weights/eomt_coco.bin
     load_ckpt_class_head: False
-    freeze_encoder: True
+    freeze_all_except_class_mask_heads: True
     lr: 1e-4
     weight_decay: 0.05
     num_points: 12544          
     network:
       class_path: models.eomt.EoMT
       init_args:
-        num_q: 200             
+        num_q: 200            
         num_blocks: 3
         masked_attn_enabled: False
         encoder:
