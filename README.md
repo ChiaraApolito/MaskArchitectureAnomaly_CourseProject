@@ -2,9 +2,9 @@
 
 Semantic segmentation and out-of-distribution (OoD) **anomaly segmentation** for
 road scenes, built around the **Encoder-only Mask Transformer (EoMT)**.
-Course project, **Politecnico di Torino**.
+This work was developed as a course project for **Fundamentals of Artificial Intelligence, Machine and Deep Learning**.
 
-**Authors:** Gaia Barberis · Miriam Galerati · Davide Motta · Chiara Apolito
+**Authors:** Chiara Apolito · Gaia Barberis · Miriam Galerati · Davide Motta 
 
 ## Overview
 
@@ -28,7 +28,7 @@ The central finding is that the best segmenter is not the best anomaly detector:
 a Cityscapes-trained model segments road scenes best, yet the COCO-pretrained,
 fine-tuned model — retaining COCO's far broader visual vocabulary — is the
 stronger anomaly detector. The full analysis is in the report
-([`report/report.pdf`](report/)); the original assignment is in
+([`docs/report.pdf`](docs/report.pdf)); the original assignment is in
 [`docs/project_guide.pdf`](docs/project_guide.pdf).
 
 ## What this repository contains
@@ -39,7 +39,7 @@ each realising one component of the workflow:
 - **[`Task4_Comparison.ipynb`](notebook/Task4_Comparison.ipynb)** — cross-domain
   comparison of the COCO- and Cityscapes-trained EoMT, evaluated as semantic
   segmenters on the Cityscapes validation set under a shared protocol
-  (COCO$\rightarrow$Cityscapes label mapping; 16 reliably-mappable classes).
+  (COCO $\rightarrow$ Cityscapes label mapping; 16 reliably-mappable classes).
 - **[`Task5_EoMT_Finetuning_on_Cityscapes.ipynb`](notebook/Task5_EoMT_Finetuning_on_Cityscapes.ipynb)**
   — staged fine-tuning of the COCO model on Cityscapes (class head → class+mask
   heads → full prediction head → full head plus the last DINOv2 blocks); the

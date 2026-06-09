@@ -26,6 +26,15 @@ from iouEval import iouEval, getColorEntry
 NUM_CHANNELS = 3
 NUM_CLASSES = 20
 
+EXCLUDED_CLASSES = [5, 7, 12]  # pole, traffic sign, rider
+
+VALID_16_CLASSES = [
+    0, 1, 2, 3, 4,
+    6,
+    8, 9, 10, 11,
+    13, 14, 15, 16, 17, 18
+]
+
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
     Resize(512, Image.BILINEAR),
@@ -76,8 +85,8 @@ def main(args):
 
     loader = DataLoader(cityscapes(args.datadir, input_transform_cityscapes, target_transform_cityscapes, subset=args.subset), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
-
-    iouEvalVal = iouEval(NUM_CLASSES)
+    iouEvalVal_19 = iouEval(NUM_CLASSES)
+    iouEvalVal_16 = iouEval(NUM_CLASSES)
 
     start = time.time()
 
@@ -90,14 +99,28 @@ def main(args):
         with torch.no_grad():
             outputs = model(inputs)
 
-        iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
+        preds = outputs.max(1)[1].unsqueeze(1).data
+
+        # 19-class evaluation: standard Cityscapes mIoU
+        iouEvalVal_19.addBatch(preds, labels)
+
+        # 16-class evaluation: ignore classes not used in the EoMT comparison
+        labels_eval_16 = labels.clone()
+
+        for cls in EXCLUDED_CLASSES:
+            labels_eval_16[labels_eval_16 == cls] = 19
+
+        iouEvalVal_16.addBatch(preds, labels_eval_16)
 
         filenameSave = filename[0].split("leftImg8bit/")[1] 
 
         print (step, filenameSave)
 
 
-    iouVal, iou_classes = iouEvalVal.getIoU()
+    iouVal, iou_classes = iouEvalVal_19.getIoU()
+    _, iou_classes_16 = iouEvalVal_16.getIoU()
+
+    miou_16 = iou_classes_16[VALID_16_CLASSES].mean()
 
     iou_classes_str = []
     for i in range(iou_classes.size(0)):
@@ -130,7 +153,9 @@ def main(args):
     print(iou_classes_str[18], "bicycle")
     print("=======================================")
     iouStr = getColorEntry(iouVal)+'{:0.2f}'.format(iouVal*100) + '\033[0m'
-    print ("MEAN IoU: ", iouStr, "%")
+    print("MEAN IoU on 19 Cityscapes classes: ", iouStr, "%")
+    print("=======================================")
+    print("MEAN IoU on 16 EoMT classes: {:.2f} %".format(miou_16 * 100))
 
 if __name__ == '__main__':
     parser = ArgumentParser()
