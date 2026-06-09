@@ -140,5 +140,4 @@ protocol), approaching the **83.7%** of the natively-trained Cityscapes model.
 For anomaly detection, the mask-based EoMT decisively outperforms the pixel-based
 ERFNet baseline; the fine-tuned model is the strongest detector on most
 benchmarks, and temperature scaling further improves the magnitude- and
-rejection-based scores. Full tables and analysis are in
-[`report/report.pdf`](report/).
+rejection-based scores. 
