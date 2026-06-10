@@ -1,6 +1,6 @@
 trainer:
   max_epochs: 15
-  precision: 16-mixed          # AMP
+  precision: bf16-mixed          # AMP
   logger:
     class_path: lightning.pytorch.loggers.wandb.WandbLogger
     init_args:

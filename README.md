@@ -29,23 +29,25 @@ a Cityscapes-trained model segments road scenes best, yet the COCO-pretrained,
 fine-tuned model — retaining COCO's far broader visual vocabulary — is the
 stronger anomaly detector. 
 
+The full analysis is in the [`report`](docs/report.pdf); the original assignment is [`project guide`](docs/project_guide.pdf).
+
 ## What this repository contains
 
 The study is implemented as four Colab notebooks under [`notebook/`](notebook/),
 each realising one component of the workflow:
 
-- **[`Task4_Comparison.ipynb`](notebook/Task4_Comparison.ipynb)** — cross-domain
+- **[`Task4.ipynb`](notebook/Task4_Comparison.ipynb)** — cross-domain
   comparison of the COCO- and Cityscapes-trained EoMT, evaluated as semantic
   segmenters on the Cityscapes validation set under a shared protocol
   (COCO $\rightarrow$ Cityscapes label mapping; 16 reliably-mappable classes).
-- **[`Task5_EoMT_Finetuning_on_Cityscapes.ipynb`](notebook/Task5_EoMT_Finetuning_on_Cityscapes.ipynb)**
+- **[`Task5.ipynb`](notebook/Task5_EoMT_Finetuning_on_Cityscapes.ipynb)**
   — staged fine-tuning of the COCO model on Cityscapes (class head → class+mask
   heads → full prediction head → full head plus the last DINOv2 blocks); the
   frozen-backbone variants are handled in
   [`eomt/training/lightning_module.py`](eomt/training/lightning_module.py).
 - **[`Task7.ipynb`](notebook/Task7.ipynb)** — pixel-based anomaly baseline:
   ERFNet with the MSP, Max-Logit and Max-Entropy post-hoc scores.
-- **[`Task8_EoMT_Anomaly.ipynb`](notebook/Task8_EoMT_Anomaly.ipynb)** — mask-based
+- **[`Task8.ipynb`](notebook/Task8_EoMT_Anomaly.ipynb)** — mask-based
   anomaly detection: EoMT with MSP, Max-Logit, Max-Entropy and the mask-native
   Rejected-by-All (RbA) score, plus temperature scaling, across all three EoMT
   checkpoints (COCO, Cityscapes, fine-tuned).
@@ -56,9 +58,7 @@ each realising one component of the workflow:
 ├── eomt/            # EoMT code, training configs and pretrained checkpoints
 ├── eval/            # ERFNet evaluation / anomaly-segmentation tools
 ├── trained_models/  # ERFNet / EoMT checkpoints used by the baselines
-├── report/          # LaTeX report (sources + compiled report.pdf)
 ├── docs/            # project_guide.pdf (assignment)
-└── data/            # local datasets (on Colab the data lives on Drive — see below)
 ```
 
 ## Reproducing the experiments (Google Colab)
@@ -133,8 +133,8 @@ securely via `getpass`.
 
 ## Results (summary)
 
-Fine-tuning lifts the COCO model from **67.0%** to **76.7%** mIoU (16-class
-protocol), approaching the **83.7%** of the natively-trained Cityscapes model.
+Fine-tuning lifts the COCO model from **67.01%** to **77.15%** mIoU (16-class
+protocol), approaching the **83.74%** of the natively-trained Cityscapes model.
 For anomaly detection, the mask-based EoMT decisively outperforms the pixel-based
 ERFNet baseline; the fine-tuned model is the strongest detector on most
 benchmarks, and temperature scaling further improves the magnitude- and
