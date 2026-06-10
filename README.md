@@ -27,9 +27,7 @@ calibrating the anomaly scores with **temperature scaling**.
 The central finding is that the best segmenter is not the best anomaly detector:
 a Cityscapes-trained model segments road scenes best, yet the COCO-pretrained,
 fine-tuned model — retaining COCO's far broader visual vocabulary — is the
-stronger anomaly detector. The full analysis is in the report
-([`docs/report.pdf`](docs/report.pdf)); the original assignment is in
-[`docs/project_guide.pdf`](docs/project_guide.pdf).
+stronger anomaly detector. 
 
 ## What this repository contains
 
