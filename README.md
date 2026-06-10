@@ -58,7 +58,7 @@ each realising one component of the workflow:
 ├── eomt/            # EoMT code, training configs and pretrained checkpoints
 ├── eval/            # ERFNet evaluation / anomaly-segmentation tools
 ├── trained_models/  # ERFNet / EoMT checkpoints used by the baselines
-├── docs/            # project_guide.pdf (assignment)
+├── docs/            # project_guide.pdf (assignment), report.pdf
 ```
 
 ## Reproducing the experiments (Google Colab)
